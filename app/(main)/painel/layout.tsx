@@ -19,11 +19,13 @@ export default async function PainelLayout({
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login?redirect=/painel')
 
-  const { data: profile } = await supabase
+  const { data } = await supabase
     .from('profiles')
     .select('nome, saldo, rating')
     .eq('id', user.id)
     .single()
+
+  const profile = data as { nome: string; saldo: number; rating: number } | null
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
