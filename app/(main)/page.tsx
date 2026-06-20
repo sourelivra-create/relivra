@@ -46,9 +46,10 @@ async function ListaLivros({ searchParams }: HomeProps) {
     query = query.or(`titulo.ilike.%${searchParams.busca}%,autor.ilike.%${searchParams.busca}%`)
   }
 
-  const { data: livros } = await query
+  const { data } = await query
+  const livros = (data || []) as Book[]
 
-  if (!livros?.length) {
+  if (!livros.length) {
     return (
       <div className="text-center py-24">
         <BookOpen size={48} className="mx-auto text-areia-400 mb-4" />
@@ -64,7 +65,7 @@ async function ListaLivros({ searchParams }: HomeProps) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
       {livros.map((livro) => (
-        <BookCard key={livro.id} livro={livro as Book} />
+        <BookCard key={livro.id} livro={livro} />
       ))}
     </div>
   )
