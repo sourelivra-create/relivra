@@ -154,55 +154,10 @@ export interface MPPreferencia {
 // ============================================================
 // Database schema tipo completo (para Supabase client)
 // ============================================================
-export interface Database {
-  public: {
-    Tables: {
-      profiles: {
-        Row: Profile
-        Insert: Omit<Profile, 'created_at'> & { created_at?: string }
-        Update: Partial<Omit<Profile, 'id'>>
-        Relationships: []
-      }
-      books: {
-        Row: Book
-        Insert: Omit<Book, 'id' | 'created_at' | 'vendedor'> & { id?: string; created_at?: string }
-        Update: Partial<Omit<Book, 'id' | 'vendedor'>>
-        Relationships: []
-      }
-      orders: {
-        Row: Order
-        Insert: Omit<Order, 'id' | 'created_at' | 'comprador' | 'items'> & { id?: string; created_at?: string }
-        Update: Partial<Omit<Order, 'id' | 'comprador' | 'items'>>
-        Relationships: []
-      }
-      order_items: {
-        Row: OrderItem
-        Insert: Omit<OrderItem, 'id' | 'book'> & { id?: string }
-        Update: Partial<Omit<OrderItem, 'id' | 'book'>>
-        Relationships: []
-      }
-      trocas: {
-        Row: Troca
-        Insert: Omit<Troca, 'id' | 'created_at' | 'updated_at' | 'diferenca_valor' | 'solicitante' | 'receptor' | 'itens'> & { id?: string }
-        Update: Partial<Omit<Troca, 'id' | 'diferenca_valor' | 'solicitante' | 'receptor' | 'itens'>>
-        Relationships: []
-      }
-      troca_itens: {
-        Row: TrocaItem
-        Insert: Omit<TrocaItem, 'id' | 'book' | 'dono'> & { id?: string }
-        Update: Partial<Omit<TrocaItem, 'id' | 'book' | 'dono'>>
-        Relationships: []
-      }
-      transactions: {
-        Row: Transaction
-        Insert: Omit<Transaction, 'id' | 'created_at'> & { id?: string; created_at?: string }
-        Update: Partial<Omit<Transaction, 'id'>>
-        Relationships: []
-      }
-    }
-    Views: {}
-    Functions: {}
-    Enums: {}
-    CompositeTypes: {}
-  }
-}
+// Nota: usamos um tipo simplificado aqui (em vez de gerar via
+// `supabase gen types typescript`) para evitar que o TypeScript
+// infira "never" em queries com joins ou campos opcionais.
+// Os tipos de domínio (Book, Profile, etc.) acima continuam
+// sendo usados manualmente para tipar os resultados nos componentes.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Database = any
