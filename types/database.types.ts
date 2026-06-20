@@ -161,37 +161,48 @@ export interface Database {
         Row: Profile
         Insert: Omit<Profile, 'created_at'> & { created_at?: string }
         Update: Partial<Omit<Profile, 'id'>>
+        Relationships: []
       }
       books: {
         Row: Book
         Insert: Omit<Book, 'id' | 'created_at' | 'vendedor'> & { id?: string; created_at?: string }
         Update: Partial<Omit<Book, 'id' | 'vendedor'>>
+        Relationships: []
       }
       orders: {
         Row: Order
         Insert: Omit<Order, 'id' | 'created_at' | 'comprador' | 'items'> & { id?: string; created_at?: string }
         Update: Partial<Omit<Order, 'id' | 'comprador' | 'items'>>
+        Relationships: []
       }
       order_items: {
         Row: OrderItem
         Insert: Omit<OrderItem, 'id' | 'book'> & { id?: string }
         Update: Partial<Omit<OrderItem, 'id' | 'book'>>
+        Relationships: []
       }
       trocas: {
         Row: Troca
         Insert: Omit<Troca, 'id' | 'created_at' | 'updated_at' | 'diferenca_valor' | 'solicitante' | 'receptor' | 'itens'> & { id?: string }
         Update: Partial<Omit<Troca, 'id' | 'diferenca_valor' | 'solicitante' | 'receptor' | 'itens'>>
+        Relationships: []
       }
       troca_itens: {
         Row: TrocaItem
         Insert: Omit<TrocaItem, 'id' | 'book' | 'dono'> & { id?: string }
         Update: Partial<Omit<TrocaItem, 'id' | 'book' | 'dono'>>
+        Relationships: []
       }
       transactions: {
         Row: Transaction
         Insert: Omit<Transaction, 'id' | 'created_at'> & { id?: string; created_at?: string }
         Update: Partial<Omit<Transaction, 'id'>>
+        Relationships: []
       }
     }
+    Views: {}
+    Functions: {}
+    Enums: {}
+    CompositeTypes: {}
   }
 }
