@@ -20,7 +20,7 @@ export default async function PaginaLivro({ params }: PageProps) {
     .from('books')
     .select('*, vendedor:profiles(id, nome, rating, avatar_url)')
     .eq('id', params.id)
-    .single()
+    .single() as { data: (Book & { vendedor: { id: string; nome: string; rating: number; avatar_url: string | null } }) | null }
 
   if (!livro) notFound()
 
