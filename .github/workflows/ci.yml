@@ -1,0 +1,48 @@
+# ============================================================
+# RELIVRA – CI: valida cada PR antes de mergear
+# O deploy em si é feito pelo Netlify automaticamente
+# ============================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-build:
+    name: Lint & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+        env:
+          # Valores fake só para o build não quebrar na CI
+          NEXT_PUBLIC_SUPABASE_URL:          ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY:     ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY:         ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANTHROPIC_API_KEY:                 ${{ secrets.ANTHROPIC_API_KEY }}
+          MERCADOPAGO_ACCESS_TOKEN:          ${{ secrets.MERCADOPAGO_ACCESS_TOKEN }}
+          NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY: ${{ secrets.NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY }}
+          NEXT_PUBLIC_APP_URL:               "https://relivra.netlify.app"

@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply font-sans bg-creme text-grafite;
+  }
+
+  h1, h2, h3 {
+    @apply font-display tracking-tight;
+  }
+}
+
+@layer components {
+  /* Botões */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
+           bg-verde-deep hover:bg-verde-700 active:bg-verde-800
+           text-white font-display font-semibold text-sm rounded-xl
+           transition-all duration-150 ease-out
+           focus:outline-none focus:ring-2 focus:ring-verde-mint focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5
+           bg-white hover:bg-creme-dark border border-areia-200
+           text-grafite-mid font-display font-medium text-sm rounded-xl
+           transition-all duration-150 ease-out
+           focus:outline-none focus:ring-2 focus:ring-verde-mint focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2
+           text-grafite-light hover:text-grafite hover:bg-creme-dark
+           font-medium text-sm rounded-lg
+           transition-all duration-150 ease-out;
+  }
+
+  /* Cards */
+  .card {
+    @apply bg-white rounded-2xl shadow-card border border-areia-200
+           overflow-hidden transition-shadow duration-200;
+  }
+
+  .card:hover {
+    @apply shadow-card-hover;
+  }
+
+  /* Inputs */
+  .input {
+    @apply w-full px-3.5 py-2.5 bg-white border border-areia-200 rounded-xl
+           text-grafite text-sm placeholder-grafite-light
+           focus:outline-none focus:ring-2 focus:ring-verde-mint focus:border-transparent
+           transition-all duration-150;
+  }
+
+  .label {
+    @apply block text-sm font-medium text-grafite-mid mb-1.5;
+  }
+
+  /* Badge de estado do livro */
+  .badge-estado {
+    @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border;
+  }
+
+  /* Skeleton loader */
+  .skeleton {
+    @apply animate-pulse bg-creme-dark rounded-lg;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Gradiente verde da ReLivra — usado no hero da home e no logo lockup */
+  .bg-relivra {
+    background: linear-gradient(135deg, #2D6A4F 0%, #40916C 100%);
+  }
+
+  .bg-relivra-soft {
+    background: linear-gradient(135deg, #F0FAF4 0%, #F8F4ED 100%);
+  }
+}

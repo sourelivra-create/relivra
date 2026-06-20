@@ -1,0 +1,50 @@
+# ============================================================
+# RELIVRA – Configuração Netlify
+# ============================================================
+
+[build]
+  command   = "npm run build"
+  publish   = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_VERSION  = "10"
+
+# Plugin obrigatório para Next.js no Netlify
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Variáveis de ambiente por contexto
+# As chaves reais ficam no painel Netlify (Site → Environment Variables)
+# Nunca commitar valores reais aqui
+
+[context.production.environment]
+  NEXT_PUBLIC_APP_URL = "https://relivra.netlify.app"
+
+[context.deploy-preview.environment]
+  NEXT_PUBLIC_APP_URL = "https://deploy-preview-$REVIEW_ID--relivra.netlify.app"
+
+[context.branch-deploy.environment]
+  NEXT_PUBLIC_APP_URL = "https://$BRANCH--relivra.netlify.app"
+
+# Headers de segurança
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options        = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy        = "strict-origin-when-cross-origin"
+    Permissions-Policy     = "camera=(), microphone=(), geolocation=()"
+
+# Cache longo para assets estáticos do Next.js
+[[headers]]
+  for = "/_next/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Redirect www → raiz (ajuste pro seu domínio customizado)
+# [[redirects]]
+#   from   = "https://www.relivra.com.br/*"
+#   to     = "https://relivra.com.br/:splat"
+#   status = 301
+#   force  = true

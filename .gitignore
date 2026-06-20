@@ -1,0 +1,44 @@
+# ============================================================
+# RELIVRA – .gitignore
+# ============================================================
+
+# ── Segredos (NUNCA commitar) ────────────────────────────────
+.env
+.env.local
+.env.*.local
+.env.production
+
+# ── Next.js ──────────────────────────────────────────────────
+.next/
+out/
+build/
+
+# ── Node ─────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ── Supabase CLI (se usar localmente) ────────────────────────
+supabase/.branches
+supabase/.temp
+
+# ── Netlify ──────────────────────────────────────────────────
+.netlify/
+
+# ── Sistema ──────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.pem
+
+# ── Editores ─────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Misc ─────────────────────────────────────────────────────
+*.log
+.vercel
+coverage/
