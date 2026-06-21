@@ -11,23 +11,21 @@ export type Json =
   | Json[]
 
 export type EstadoLivro = 'OTIMO' | 'BOM' | 'REGULAR' | 'RUIM'
-export type CategoriaLivro =
-  | 'LITERATURA'
-  | 'FICCAO'
-  | 'BIOGRAFIA'
-  | 'NEGOCIOS'
-  | 'TECNOLOGIA'
-  | 'CIENCIA'
-  | 'FILOSOFIA'
-  | 'HISTORIA'
-  | 'INFANTIL'
-  | 'DIDATICO'
-  | 'OUTROS'
 export type TipoOrder = 'COMPRA' | 'TROCA'
 export type StatusOrder = 'PENDENTE' | 'PAGO' | 'CANCELADO' | 'ENTREGUE'
 export type StatusTroca = 'PENDENTE' | 'ACEITA' | 'RECUSADA' | 'FINALIZADA' | 'CANCELADA'
 export type StatusTransaction = 'PENDENTE' | 'PAGO' | 'ESTORNADO'
 export type TipoTransaction = 'VENDA' | 'CREDITO' | 'DEBITO' | 'TROCA'
+
+// Categorias agora são dinâmicas — a IA pode criar novas conforme
+// identifica livros que não se encaixam nas existentes.
+export interface Categoria {
+  id: string
+  nome: string
+  slug: string
+  criada_por_ia: boolean
+  created_at: string
+}
 
 export interface Profile {
   id: string
@@ -38,23 +36,37 @@ export interface Profile {
   created_at: string
 }
 
+export type StatusAvaliacaoIA = 'NAO_SOLICITADA' | 'PROCESSANDO' | 'CONCLUIDA' | 'ERRO'
+
 export interface Book {
   id: string
   titulo: string
   autor: string
   descricao: string | null
-  categoria: CategoriaLivro
-  estado: EstadoLivro
-  nota_estado: number | null
+  categoria_id: string
+  versao: string | null             // ex: "2ª edição, 2020"
+  estado: EstadoLivro                // declarado pelo VENDEDOR (manual)
+  nota_estado: number | null         // nota do VENDEDOR (manual)
   preco: number
   preco_sugerido: number | null
   aceita_troca: boolean
-  imagem_url: string | null
+  imagem_url: string | null          // DEPRECATED — mantido só para dados antigos
+  fotos: string[]                    // mínimo 3: [capa, interna, verso, ...extras]
   vendedor_id: string
   vendido: boolean
   created_at: string
+  // Avaliação independente da IA — segunda opinião, não sobrescreve
+  // a escolha do vendedor, só é exibida ao lado para o comprador
+  status_avaliacao_ia: StatusAvaliacaoIA
+  estado_ia: EstadoLivro | null
+  nota_ia: number | null
+  descricao_estado_ia: string | null
+  tentativas_avaliacao_ia: number
+  avaliacao_ia_solicitada_em: string | null
+  avaliacao_ia_concluida_em: string | null
   // Join
   vendedor?: Profile
+  categoria?: Categoria
 }
 
 export interface Order {
@@ -125,6 +137,7 @@ export interface Transaction {
 export interface AnaliseIA {
   titulo: string
   autor: string
+  categoria_sugerida: string
   estado: EstadoLivro
   nota: number
   descricao_estado: string
@@ -135,7 +148,7 @@ export interface AnaliseIA {
 // Filtros da Home
 // ============================================================
 export interface FiltrosLivro {
-  categoria?: CategoriaLivro
+  categoria_id?: string
   estado?: EstadoLivro
   preco_min?: number
   preco_max?: number
