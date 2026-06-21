@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Search, SlidersHorizontal, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { CategoriaLivro, EstadoLivro } from '@/types/database.types'
+import { createClient } from '@/lib/supabase/client'
+import type { EstadoLivro } from '@/types/database.types'
 
 const ESTADOS: { value: EstadoLivro; label: string; cor: string }[] = [
   { value: 'OTIMO',   label: 'Ótimo',   cor: 'bg-verde-100 text-verde-700 border-verde-300' },
@@ -13,27 +14,25 @@ const ESTADOS: { value: EstadoLivro; label: string; cor: string }[] = [
   { value: 'RUIM',    label: 'Ruim',    cor: 'bg-red-100 text-red-700 border-red-300' },
 ]
 
-const CATEGORIAS: { value: CategoriaLivro; label: string }[] = [
-  { value: 'LITERATURA',  label: 'Literatura' },
-  { value: 'FICCAO',      label: 'Ficção' },
-  { value: 'BIOGRAFIA',   label: 'Biografia' },
-  { value: 'NEGOCIOS',    label: 'Negócios' },
-  { value: 'TECNOLOGIA',  label: 'Tecnologia' },
-  { value: 'CIENCIA',     label: 'Ciência' },
-  { value: 'FILOSOFIA',   label: 'Filosofia' },
-  { value: 'HISTORIA',    label: 'História' },
-  { value: 'INFANTIL',    label: 'Infantil' },
-  { value: 'DIDATICO',    label: 'Didático' },
-  { value: 'OUTROS',      label: 'Outros' },
-]
-
 export default function FiltrosLivros() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [filtroPainel, setFiltroPainel] = useState(false)
+  const [categorias, setCategorias] = useState<{ id: string; nome: string }[]>([])
+
+  // Categorias agora são dinâmicas (a IA pode criar novas), então
+  // buscamos a lista atual em vez de usar um enum fixo.
+  useEffect(() => {
+    const supabase = createClient()
+    supabase
+      .from('categorias')
+      .select('id, nome')
+      .order('nome', { ascending: true })
+      .then(({ data }) => setCategorias(data || []))
+  }, [])
 
   const estadoAtivo    = searchParams.get('estado') as EstadoLivro | null
-  const categoriaAtiva = searchParams.get('categoria') as CategoriaLivro | null
+  const categoriaAtiva = searchParams.get('categoria') || null
   const precoMin       = searchParams.get('preco_min') || ''
   const precoMax       = searchParams.get('preco_max') || ''
   const buscaAtiva     = searchParams.get('busca') || ''
@@ -119,8 +118,8 @@ export default function FiltrosLivros() {
               onChange={(e) => atualizar('categoria', e.target.value || null)}
             >
               <option value="">Todas as categorias</option>
-              {CATEGORIAS.map(c => (
-                <option key={c.value} value={c.value}>{c.label}</option>
+              {categorias.map(c => (
+                <option key={c.id} value={c.id}>{c.nome}</option>
               ))}
             </select>
           </div>
@@ -196,7 +195,7 @@ export default function FiltrosLivros() {
               className="inline-flex items-center gap-1 px-2.5 py-1 bg-verde-100 text-verde-700 
                          text-xs font-medium rounded-full border border-verde-200"
             >
-              {CATEGORIAS.find(c => c.value === categoriaAtiva)?.label}
+              {categorias.find(c => c.id === categoriaAtiva)?.nome}
               <X size={10} />
             </button>
           )}
