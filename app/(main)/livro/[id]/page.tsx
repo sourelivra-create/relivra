@@ -2,15 +2,22 @@ import { notFound } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { formatarMoeda, formatarData } from '@/lib/utils'
+import { formatarMoeda, formatarData, cn } from '@/lib/utils'
 import { corEstado, labelEstado } from '@/lib/preco/calcular'
-import { cn } from '@/lib/utils'
-import { Star, Calendar, User, ArrowLeftRight, ShoppingCart, BookOpen } from 'lucide-react'
+import { Star, Calendar, User, BookOpen, Sparkles, AlertCircle } from 'lucide-react'
 import BotoesAcao from './BotoesAcao'
-import type { Book } from '@/types/database.types'
+import GaleriaFotos from './GaleriaFotos'
+import BotaoAvaliacaoIA from '@/components/livros/BotaoAvaliacaoIA'
+import { MAX_TENTATIVAS_AVALIACAO_IA } from '@/lib/ia/analisar-livro'
+import type { Book, Categoria, Profile } from '@/types/database.types'
 
 interface PageProps {
   params: { id: string }
+}
+
+type LivroComJoins = Book & {
+  vendedor: Pick<Profile, 'id' | 'nome' | 'rating' | 'avatar_url'>
+  categoria: Pick<Categoria, 'id' | 'nome'>
 }
 
 export default async function PaginaLivro({ params }: PageProps) {
@@ -18,58 +25,74 @@ export default async function PaginaLivro({ params }: PageProps) {
 
   const { data: livro } = await supabase
     .from('books')
-    .select('*, vendedor:profiles(id, nome, rating, avatar_url)')
+    .select('*, vendedor:profiles(id, nome, rating, avatar_url), categoria:categorias(id, nome)')
     .eq('id', params.id)
-    .single() as { data: (Book & { vendedor: { id: string; nome: string; rating: number; avatar_url: string | null } }) | null }
+    .single() as { data: LivroComJoins | null }
 
   if (!livro) notFound()
 
   const { data: { user } } = await supabase.auth.getUser()
   const isProprioLivro = user?.id === livro.vendedor_id
 
+  // Fallback para livros antigos que só tinham imagem_url (1 foto)
+  const fotos = livro.fotos?.length ? livro.fotos : (livro.imagem_url ? [livro.imagem_url] : [])
+  const tentativasRestantes = MAX_TENTATIVAS_AVALIACAO_IA - (livro.tentativas_avaliacao_ia || 0)
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       <div className="grid md:grid-cols-2 gap-8 lg:gap-12">
-        {/* Imagem */}
-        <div className="relative aspect-[3/4] bg-areia-100 rounded-3xl overflow-hidden shadow-float">
-          {livro.imagem_url ? (
-            <Image
-              src={livro.imagem_url}
-              alt={livro.titulo}
-              fill
-              className="object-cover"
-              priority
-              sizes="(max-width: 768px) 100vw, 50vw"
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <BookOpen size={80} className="text-areia-400" />
-            </div>
-          )}
-
-          {livro.vendido && (
-            <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-              <span className="bg-white text-gray-800 font-bold text-lg px-6 py-3 rounded-2xl">
-                Vendido
-              </span>
-            </div>
-          )}
-        </div>
+        {/* Galeria de fotos */}
+        <GaleriaFotos fotos={fotos} titulo={livro.titulo} vendido={livro.vendido} />
 
         {/* Info */}
         <div className="flex flex-col">
-          {/* Estado */}
-          <span className={cn('badge-estado w-fit mb-3', corEstado(livro.estado))}>
-            {labelEstado(livro.estado)}
-            {livro.nota_estado != null && (
-              <span className="ml-1 opacity-60">({livro.nota_estado}/10)</span>
-            )}
-          </span>
+          {/* Estado declarado pelo vendedor */}
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            <span className={cn('badge-estado w-fit', corEstado(livro.estado))}>
+              {labelEstado(livro.estado)}
+              {livro.nota_estado != null && (
+                <span className="ml-1 opacity-60">({livro.nota_estado}/10)</span>
+              )}
+            </span>
+            <span className="text-xs text-gray-400">declarado pelo vendedor</span>
+          </div>
+
+          {/* Segunda opinião da IA — só aparece se já foi avaliado */}
+          {livro.status_avaliacao_ia === 'CONCLUIDA' && livro.estado_ia && (
+            <div className="flex items-start gap-2 bg-verde-50 border border-verde-100 rounded-xl p-3 mb-4">
+              <Sparkles size={16} className="text-verde-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs font-semibold text-verde-700">
+                  Avaliação da IA: {labelEstado(livro.estado_ia)}
+                  {livro.nota_ia != null && ` (${livro.nota_ia}/10)`}
+                </p>
+                {livro.descricao_estado_ia && (
+                  <p className="text-xs text-gray-500 mt-0.5">{livro.descricao_estado_ia}</p>
+                )}
+                {livro.estado_ia !== livro.estado && (
+                  <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                    <AlertCircle size={12} />
+                    Diverge da avaliação do vendedor — confira as fotos com atenção
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {livro.status_avaliacao_ia === 'PROCESSANDO' && (
+            <div className="flex items-center gap-2 text-sm text-gray-500 bg-areia-50 rounded-xl p-3 mb-4 border border-areia-200">
+              <Sparkles size={14} className="animate-pulse text-verde-500" />
+              Aguardando avaliação da IA...
+            </div>
+          )}
 
           <h1 className="font-display text-2xl md:text-3xl font-bold text-grafite leading-tight text-balance">
             {livro.titulo}
           </h1>
           <p className="text-gray-500 text-lg mt-1">{livro.autor}</p>
+          {livro.versao && (
+            <p className="text-gray-400 text-sm mt-0.5">{livro.versao}</p>
+          )}
 
           {/* Preço */}
           <div className="mt-6">
@@ -93,7 +116,7 @@ export default async function PaginaLivro({ params }: PageProps) {
             {livro.categoria && (
               <div className="flex items-center gap-2">
                 <BookOpen size={14} />
-                <span>{livro.categoria}</span>
+                <span>{livro.categoria.nome}</span>
               </div>
             )}
             <div className="flex items-center gap-2">
@@ -109,15 +132,13 @@ export default async function PaginaLivro({ params }: PageProps) {
             </div>
             <div>
               <p className="text-xs text-gray-400">Vendedor</p>
-              <p className="text-sm font-semibold text-gray-800">
-                {(livro.vendedor as { nome: string })?.nome}
-              </p>
+              <p className="text-sm font-semibold text-gray-800">{livro.vendedor?.nome}</p>
               <div className="flex items-center gap-0.5 mt-0.5">
                 {[1,2,3,4,5].map(i => (
                   <Star
                     key={i}
                     size={10}
-                    className={i <= Math.round((livro.vendedor as { rating: number })?.rating || 5)
+                    className={i <= Math.round(livro.vendedor?.rating || 5)
                       ? 'text-amber-400 fill-amber-400'
                       : 'text-areia-300'
                     }
@@ -126,6 +147,17 @@ export default async function PaginaLivro({ params }: PageProps) {
               </div>
             </div>
           </div>
+
+          {/* Botão de avaliação IA — só o dono vê */}
+          {isProprioLivro && livro.status_avaliacao_ia !== 'CONCLUIDA' && (
+            <div className="mt-4">
+              <BotaoAvaliacaoIA
+                livroId={livro.id}
+                statusAtual={livro.status_avaliacao_ia}
+                tentativasRestantes={tentativasRestantes}
+              />
+            </div>
+          )}
 
           {/* Botões de ação */}
           <div className="mt-6 space-y-3">
