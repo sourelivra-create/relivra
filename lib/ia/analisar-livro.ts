@@ -1,50 +1,92 @@
 import Anthropic from '@anthropic-ai/sdk'
-import type { AnaliseIA, EstadoLivro } from '@/types/database.types'
+import type { EstadoLivro } from '@/types/database.types'
 
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 })
 
-const PROMPT_ANALISE = `Você é um especialista em avaliação de livros usados.
-Analise esta imagem de um livro e retorne um JSON com exatamente estes campos:
+// ============================================================
+// Interruptor central: enquanto false, a avaliação da IA é
+// totalmente OPCIONAL e não bloqueia a publicação do livro.
+// Quando true, o livro só pode ser publicado depois que a IA
+// avaliar o estado de conservação pelas fotos.
+//
+// Mudar aqui (ou via variável de ambiente) ativa/desativa a
+// obrigatoriedade sem precisar tocar no resto do código.
+// ============================================================
+export const IA_AVALIACAO_OBRIGATORIA =
+  process.env.IA_AVALIACAO_OBRIGATORIA === 'true'
 
+export const MAX_TENTATIVAS_AVALIACAO_IA = 2
+
+const PROMPT_AVALIACAO_ESTADO = `Você é um perito em avaliação de estado de conservação de livros usados.
+Você vai receber 3 ou mais fotos do MESMO livro: capa, página interna, e contracapa/verso (possivelmente mais).
+
+Sua tarefa é dar uma avaliação INDEPENDENTE e REALISTA do estado de conservação,
+baseada apenas no que é visível nas fotos. Esta avaliação será mostrada ao lado
+da avaliação que o próprio vendedor declarou, para dar mais transparência ao comprador.
+
+Seja rigoroso e honesto — não infle a nota. Procure por:
+- Manchas, amareladas ou rasgos nas páginas
+- Danos na capa (dobras, rasgos, descoloração)
+- Condição da lombada (solta, rachada)
+- Anotações, grifos ou orelhas nas páginas
+
+Retorne APENAS um JSON com este formato exato:
 {
-  "titulo": "título do livro",
-  "autor": "nome do autor",
   "estado": "OTIMO" | "BOM" | "REGULAR" | "RUIM",
   "nota": número de 0 a 10,
-  "descricao_estado": "descrição breve do estado de conservação",
-  "incerto": true | false
+  "descricao": "explicação breve e objetiva do que você observou nas fotos"
 }
 
-Critérios de estado:
+Critérios:
 - OTIMO (8-10): Sem marcas visíveis, capa perfeita, páginas limpas
 - BOM (6-7): Pequenos sinais de uso, sem danos significativos
 - REGULAR (4-5): Marcas de uso visíveis, possíveis grifos ou orelhas
 - RUIM (0-3): Danos visíveis, capa danificada, páginas rasgadas/manchadas
 
-Se não conseguir identificar título ou autor com certeza, marque "incerto": true.
 Retorne APENAS o JSON, sem texto adicional.`
 
-export async function analisarLivroComIA(imagemBase64: string, mimeType: string): Promise<AnaliseIA> {
+interface FotoInput {
+  base64: string
+  mimeType: string
+}
+
+export interface AvaliacaoEstadoIA {
+  estado: EstadoLivro
+  nota: number
+  descricao: string
+}
+
+/**
+ * Avalia o estado de conservação de um livro a partir de suas fotos.
+ * Essa é a ÚNICA responsabilidade da IA agora — não identifica título,
+ * autor, categoria ou preço, que são sempre preenchidos manualmente
+ * pelo vendedor no cadastro.
+ */
+export async function avaliarEstadoComIA(fotos: FotoInput[]): Promise<AvaliacaoEstadoIA> {
+  if (fotos.length < 3) {
+    throw new Error('São necessárias pelo menos 3 fotos para avaliação (capa, interna, verso)')
+  }
+
   const response = await client.messages.create({
-    model: 'claude-opus-4-6',
-    max_tokens: 500,
+    model: 'claude-haiku-4-5-20251001', // modelo mais barato — suficiente para essa tarefa visual
+    max_tokens: 400,
     messages: [
       {
         role: 'user',
         content: [
-          {
-            type: 'image',
+          ...fotos.map(foto => ({
+            type: 'image' as const,
             source: {
-              type: 'base64',
-              media_type: mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-              data: imagemBase64,
+              type: 'base64' as const,
+              media_type: foto.mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+              data: foto.base64,
             },
-          },
+          })),
           {
-            type: 'text',
-            text: PROMPT_ANALISE,
+            type: 'text' as const,
+            text: PROMPT_AVALIACAO_ESTADO,
           },
         ],
       },
@@ -54,28 +96,16 @@ export async function analisarLivroComIA(imagemBase64: string, mimeType: string)
   const texto = response.content[0].type === 'text' ? response.content[0].text : ''
 
   try {
-    // Remove possíveis marcações de código
     const jsonLimpo = texto.replace(/```json\n?|\n?```/g, '').trim()
-    const analise = JSON.parse(jsonLimpo)
+    const resultado = JSON.parse(jsonLimpo)
 
     return {
-      titulo: analise.titulo || '',
-      autor: analise.autor || '',
-      estado: validarEstado(analise.estado),
-      nota: Math.min(10, Math.max(0, Number(analise.nota) || 5)),
-      descricao_estado: analise.descricao_estado || '',
-      incerto: Boolean(analise.incerto),
+      estado: validarEstado(resultado.estado),
+      nota: Math.min(10, Math.max(0, Number(resultado.nota) || 5)),
+      descricao: resultado.descricao || 'Avaliação concluída sem observações adicionais.',
     }
   } catch {
-    // Fallback se JSON falhar
-    return {
-      titulo: '',
-      autor: '',
-      estado: 'BOM',
-      nota: 5,
-      descricao_estado: 'Não foi possível analisar automaticamente.',
-      incerto: true,
-    }
+    throw new Error('Não foi possível interpretar a resposta da IA')
   }
 }
 
