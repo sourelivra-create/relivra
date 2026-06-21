@@ -1,103 +1,77 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import {
-  Upload, Sparkles, Loader2, CheckCircle2, Camera,
-  AlertCircle, ChevronRight
+  Loader2, CheckCircle2, Camera, AlertCircle, ChevronRight, X, ImagePlus
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
-import type { EstadoLivro, CategoriaLivro, AnaliseIA } from '@/types/database.types'
+import type { EstadoLivro } from '@/types/database.types'
 
-type Etapa = 'upload' | 'analisando' | 'revisao' | 'publicando' | 'sucesso'
-
-const CATEGORIAS: { value: CategoriaLivro; label: string }[] = [
-  { value: 'LITERATURA', label: 'Literatura' },
-  { value: 'FICCAO', label: 'Ficção' },
-  { value: 'BIOGRAFIA', label: 'Biografia' },
-  { value: 'NEGOCIOS', label: 'Negócios' },
-  { value: 'TECNOLOGIA', label: 'Tecnologia' },
-  { value: 'CIENCIA', label: 'Ciência' },
-  { value: 'FILOSOFIA', label: 'Filosofia' },
-  { value: 'HISTORIA', label: 'História' },
-  { value: 'INFANTIL', label: 'Infantil' },
-  { value: 'DIDATICO', label: 'Didático' },
-  { value: 'OUTROS', label: 'Outros' },
-]
+type Etapa = 'formulario' | 'publicando' | 'sucesso'
 
 const ESTADOS: EstadoLivro[] = ['OTIMO', 'BOM', 'REGULAR', 'RUIM']
 const LABEL_ESTADO: Record<EstadoLivro, string> = {
   OTIMO: 'Ótimo', BOM: 'Bom', REGULAR: 'Regular', RUIM: 'Ruim'
 }
 
+const LABELS_FOTO = ['Capa', 'Página interna', 'Verso / contracapa']
+const MIN_FOTOS = 3
+const MAX_FOTOS = 6
+
 export default function VenderPage() {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
 
-  const [etapa, setEtapa] = useState<Etapa>('upload')
-  const [imagemFile, setImagemFile] = useState<File | null>(null)
-  const [imagemPreview, setImagemPreview] = useState<string | null>(null)
-  const [analise, setAnalise] = useState<AnaliseIA & {
-    preco_sugerido?: number
-    preco_mercado?: number
-  } | null>(null)
+  const [etapa, setEtapa] = useState<Etapa>('formulario')
+  const [fotos, setFotos] = useState<File[]>([])
+  const [fotosPreviews, setFotosPreviews] = useState<string[]>([])
+  const [categoriasDisponiveis, setCategoriasDisponiveis] = useState<{ id: string; nome: string }[]>([])
 
-  // Form state
+  // Form state — tudo manual
   const [titulo, setTitulo] = useState('')
   const [autor, setAutor] = useState('')
   const [descricao, setDescricao] = useState('')
-  const [categoria, setCategoria] = useState<CategoriaLivro>('OUTROS')
+  const [categoriaNome, setCategoriaNome] = useState('')
+  const [versao, setVersao] = useState('')
   const [estado, setEstado] = useState<EstadoLivro>('BOM')
+  const [notaEstado, setNotaEstado] = useState('')
   const [preco, setPreco] = useState('')
   const [aceitaTroca, setAceitaTroca] = useState(true)
   const [erro, setErro] = useState('')
 
-  const handleImagem = (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      setErro('Selecione uma imagem válida (JPG, PNG, WebP)')
-      return
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setErro('Imagem muito grande. Máximo 5MB.')
-      return
-    }
+  useEffect(() => {
+    supabase
+      .from('categorias')
+      .select('id, nome')
+      .order('nome', { ascending: true })
+      .then(({ data }) => setCategoriasDisponiveis(data || []))
+  }, [])
 
-    setImagemFile(file)
-    setImagemPreview(URL.createObjectURL(file))
+  const handleAdicionarFotos = (files: FileList) => {
+    const novasFotos = Array.from(files).slice(0, MAX_FOTOS - fotos.length)
+
+    for (const file of novasFotos) {
+      if (!file.type.startsWith('image/')) {
+        setErro('Selecione apenas imagens (JPG, PNG, WebP)')
+        continue
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        setErro('Cada imagem deve ter no máximo 5MB')
+        continue
+      }
+      setFotos(prev => [...prev, file])
+      setFotosPreviews(prev => [...prev, URL.createObjectURL(file)])
+    }
     setErro('')
-    analisarImagem(file)
   }
 
-  const analisarImagem = async (file: File) => {
-    setEtapa('analisando')
-
-    const formData = new FormData()
-    formData.append('imagem', file)
-
-    try {
-      const res = await fetch('/api/ia/analisar', { method: 'POST', body: formData })
-      const data = await res.json()
-
-      if (!res.ok) {
-        setErro(data.error || 'Erro na análise')
-        setEtapa('upload')
-        return
-      }
-
-      setAnalise(data)
-      setTitulo(data.titulo || '')
-      setAutor(data.autor || '')
-      setDescricao(data.descricao_estado || '')
-      setEstado(data.estado || 'BOM')
-      setPreco(String(data.preco_sugerido || ''))
-      setEtapa('revisao')
-    } catch {
-      setErro('Falha na análise. Tente novamente.')
-      setEtapa('upload')
-    }
+  const removerFoto = (index: number) => {
+    setFotos(prev => prev.filter((_, i) => i !== index))
+    setFotosPreviews(prev => prev.filter((_, i) => i !== index))
   }
 
   const handlePublicar = async () => {
@@ -105,8 +79,12 @@ export default function VenderPage() {
       setErro('Preencha título, autor e preço')
       return
     }
-    if (!imagemFile) {
-      setErro('Imagem obrigatória')
+    if (!categoriaNome.trim()) {
+      setErro('Informe uma categoria para o livro')
+      return
+    }
+    if (fotos.length < MIN_FOTOS) {
+      setErro(`São necessárias pelo menos ${MIN_FOTOS} fotos (capa, interna e verso)`)
       return
     }
 
@@ -120,31 +98,54 @@ export default function VenderPage() {
         return
       }
 
-      // Upload da imagem
-      const ext = imagemFile.name.split('.').pop()
-      const path = `${user.id}/${Date.now()}.${ext}`
-      const { error: uploadErr } = await supabase.storage
-        .from('livros')
-        .upload(path, imagemFile, { cacheControl: '3600', upsert: false })
+      // Resolve a categoria (busca existente ou cria nova)
+      const categoriaExistente = categoriasDisponiveis.find(
+        c => c.nome.toLowerCase() === categoriaNome.trim().toLowerCase()
+      )
 
-      if (uploadErr) throw uploadErr
+      let categoriaId = categoriaExistente?.id
 
-      const { data: urlData } = supabase.storage.from('livros').getPublicUrl(path)
+      if (!categoriaId) {
+        const resCategoria = await fetch('/api/categorias', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nome: categoriaNome.trim() }),
+        })
+        const dataCategoria = await resCategoria.json()
+        if (!resCategoria.ok) throw new Error(dataCategoria.error || 'Erro ao criar categoria')
+        categoriaId = dataCategoria.id
+      }
 
-      // Inserir livro
+      // Upload de todas as fotos
+      const urlsFotos: string[] = []
+      for (const foto of fotos) {
+        const ext = foto.name.split('.').pop()
+        const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+        const { error: uploadErr } = await supabase.storage
+          .from('livros')
+          .upload(path, foto, { cacheControl: '3600', upsert: false })
+
+        if (uploadErr) throw uploadErr
+
+        const { data: urlData } = supabase.storage.from('livros').getPublicUrl(path)
+        urlsFotos.push(urlData.publicUrl)
+      }
+
+      // Inserir livro — tudo vem do formulário manual
       const { data: livro, error: insertErr } = await supabase
         .from('books')
         .insert({
           titulo: titulo.trim(),
           autor: autor.trim(),
           descricao: descricao.trim() || null,
-          categoria,
+          categoria_id: categoriaId,
+          versao: versao.trim() || null,
           estado,
-          nota_estado: analise?.nota || null,
+          nota_estado: notaEstado ? Number(notaEstado) : null,
           preco: Number(preco),
-          preco_sugerido: analise?.preco_sugerido || null,
           aceita_troca: aceitaTroca,
-          imagem_url: urlData.publicUrl,
+          imagem_url: urlsFotos[0], // capa, mantido por compatibilidade
+          fotos: urlsFotos,
           vendedor_id: user.id,
           vendido: false,
         })
@@ -158,87 +159,19 @@ export default function VenderPage() {
     } catch (err) {
       console.error(err)
       setErro('Erro ao publicar. Tente novamente.')
-      setEtapa('revisao')
+      setEtapa('formulario')
     }
   }
 
-  // ─── Tela: Upload ───────────────────────────────────────────
-  if (etapa === 'upload') {
-    return (
-      <div className="max-w-lg mx-auto px-4 py-12">
-        <div className="text-center mb-8">
-          <h1 className="font-display text-2xl font-bold text-grafite">Vender um livro</h1>
-          <p className="text-gray-500 text-sm mt-2">
-            Tire uma foto do livro e a IA cuida do resto
-          </p>
-        </div>
-
-        {erro && (
-          <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 
-                          rounded-xl p-3 mb-4 text-sm">
-            <AlertCircle size={16} />
-            {erro}
-          </div>
-        )}
-
-        <div
-          onClick={() => inputRef.current?.click()}
-          onDragOver={e => e.preventDefault()}
-          onDrop={e => {
-            e.preventDefault()
-            const file = e.dataTransfer.files[0]
-            if (file) handleImagem(file)
-          }}
-          className="border-2 border-dashed border-areia-300 hover:border-verde-400 
-                     rounded-3xl p-12 text-center cursor-pointer transition-colors
-                     hover:bg-verde-50 group"
-        >
-          <div className="w-16 h-16 bg-verde-100 rounded-2xl flex items-center justify-center 
-                          mx-auto mb-4 group-hover:bg-verde-200 transition-colors">
-            <Camera size={28} className="text-verde-600" />
-          </div>
-          <p className="font-semibold text-gray-700">Clique para enviar ou arraste aqui</p>
-          <p className="text-sm text-gray-400 mt-1">JPG, PNG ou WebP • Máx. 5MB</p>
-        </div>
-
-        <input
-          ref={inputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={e => {
-            const file = e.target.files?.[0]
-            if (file) handleImagem(file)
-          }}
-        />
-
-        <div className="mt-6 flex items-start gap-3 text-sm text-gray-500 bg-areia-50 
-                        rounded-xl p-4 border border-areia-200">
-          <Sparkles size={16} className="text-verde-500 mt-0.5 shrink-0" />
-          <p>
-            Nossa IA analisa a imagem e preenche título, autor, estado e preço automaticamente.
-            Você só precisa confirmar!
-          </p>
-        </div>
-      </div>
-    )
-  }
-
-  // ─── Tela: Analisando ────────────────────────────────────────
-  if (etapa === 'analisando') {
+  // ─── Tela: Publicando ────────────────────────────────────────
+  if (etapa === 'publicando') {
     return (
       <div className="max-w-lg mx-auto px-4 py-24 text-center">
         <div className="w-20 h-20 bg-verde-100 rounded-full flex items-center justify-center mx-auto mb-6">
-          <Sparkles size={36} className="text-verde-600 animate-pulse" />
+          <Loader2 size={36} className="text-verde-600 animate-spin" />
         </div>
-        <h2 className="font-display text-xl font-bold text-grafite">Analisando o livro...</h2>
-        <p className="text-gray-400 text-sm mt-2">A IA está avaliando título, estado e preço</p>
-        {imagemPreview && (
-          <div className="relative w-32 h-44 mx-auto mt-8 rounded-xl overflow-hidden shadow-card">
-            <Image src={imagemPreview} alt="Livro" fill className="object-cover" />
-          </div>
-        )}
+        <h2 className="font-display text-xl font-bold text-grafite">Publicando livro...</h2>
+        <p className="text-gray-400 text-sm mt-2">Enviando fotos e salvando informações</p>
       </div>
     )
   }
@@ -256,28 +189,15 @@ export default function VenderPage() {
     )
   }
 
-  // ─── Tela: Revisão + Publicar ────────────────────────────────
+  // ─── Tela: Formulário (única etapa de preenchimento) ─────────
   return (
     <div className="max-w-lg mx-auto px-4 py-8">
-      <div className="flex items-center gap-3 mb-6">
-        {imagemPreview && (
-          <div className="relative w-16 h-22 rounded-xl overflow-hidden shadow-card shrink-0">
-            <Image src={imagemPreview} alt="Livro" fill className="object-cover" />
-          </div>
-        )}
-        <div>
-          <h1 className="font-display text-xl font-bold text-grafite">Confirmar detalhes</h1>
-          <p className="text-gray-400 text-sm">Revise e ajuste as informações</p>
-        </div>
+      <div className="text-center mb-8">
+        <h1 className="font-display text-2xl font-bold text-grafite">Vender um livro</h1>
+        <p className="text-gray-500 text-sm mt-2">
+          Preencha as informações e adicione as fotos do livro
+        </p>
       </div>
-
-      {analise?.incerto && (
-        <div className="flex items-center gap-2 text-amber-600 bg-amber-50 border border-amber-200 
-                        rounded-xl p-3 mb-4 text-sm">
-          <AlertCircle size={16} />
-          A IA não teve certeza em alguns campos. Verifique abaixo.
-        </div>
-      )}
 
       {erro && (
         <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 
@@ -287,6 +207,61 @@ export default function VenderPage() {
         </div>
       )}
 
+      {/* ─── Fotos ─── */}
+      <div className="mb-6">
+        <label className="label">
+          Fotos do livro * <span className="text-gray-400 font-normal">(mínimo {MIN_FOTOS}: capa, interna e verso)</span>
+        </label>
+
+        <div className="grid grid-cols-3 gap-2">
+          {fotosPreviews.map((preview, i) => (
+            <div key={i} className="relative aspect-[3/4] rounded-xl overflow-hidden bg-areia-100 group">
+              <Image src={preview} alt={`Foto ${i + 1}`} fill className="object-cover" />
+              <button
+                onClick={() => removerFoto(i)}
+                className="absolute top-1 right-1 w-6 h-6 bg-black/60 rounded-full flex items-center justify-center text-white"
+              >
+                <X size={12} />
+              </button>
+              <span className="absolute bottom-1 left-1 right-1 text-[10px] text-white bg-black/50 rounded px-1 py-0.5 text-center truncate">
+                {LABELS_FOTO[i] || `Extra ${i - 2}`}
+              </span>
+            </div>
+          ))}
+
+          {fotos.length < MAX_FOTOS && (
+            <button
+              onClick={() => inputRef.current?.click()}
+              className="aspect-[3/4] rounded-xl border-2 border-dashed border-areia-300 
+                         hover:border-verde-400 hover:bg-verde-50 transition-colors
+                         flex flex-col items-center justify-center gap-1 text-gray-400"
+            >
+              {fotos.length === 0 ? <Camera size={20} /> : <ImagePlus size={20} />}
+              <span className="text-[10px] font-medium">
+                {LABELS_FOTO[fotos.length] || 'Adicionar'}
+              </span>
+            </button>
+          )}
+        </div>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={e => {
+            if (e.target.files) handleAdicionarFotos(e.target.files)
+            e.target.value = ''
+          }}
+        />
+
+        <p className="text-xs text-gray-400 mt-2">
+          {fotos.length}/{MIN_FOTOS} fotos mínimas adicionadas
+        </p>
+      </div>
+
+      {/* ─── Campos manuais ─── */}
       <div className="space-y-4">
         <div>
           <label className="label">Título *</label>
@@ -298,35 +273,76 @@ export default function VenderPage() {
           <input className="input" value={autor} onChange={e => setAutor(e.target.value)} placeholder="Nome do autor" />
         </div>
 
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="label">Categoria *</label>
+            <input
+              className="input"
+              list="categorias-sugeridas"
+              value={categoriaNome}
+              onChange={e => setCategoriaNome(e.target.value)}
+              placeholder="Ex: Ficção"
+            />
+            <datalist id="categorias-sugeridas">
+              {categoriasDisponiveis.map(c => (
+                <option key={c.id} value={c.nome} />
+              ))}
+            </datalist>
+          </div>
+
+          <div>
+            <label className="label">Versão / Edição</label>
+            <input
+              className="input"
+              value={versao}
+              onChange={e => setVersao(e.target.value)}
+              placeholder="Ex: 2ª edição, 2020"
+            />
+          </div>
+        </div>
+
         <div>
-          <label className="label">Descrição do estado</label>
+          <label className="label">Descrição</label>
           <textarea
             className="input resize-none"
             rows={3}
             value={descricao}
             onChange={e => setDescricao(e.target.value)}
-            placeholder="Descreva o estado de conservação..."
+            placeholder="Detalhes adicionais sobre o livro..."
           />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Categoria</label>
-            <select className="input" value={categoria} onChange={e => setCategoria(e.target.value as CategoriaLivro)}>
-              {CATEGORIAS.map(c => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="label">Estado *</label>
+            <label className="label">Estado de conservação *</label>
             <select className="input" value={estado} onChange={e => setEstado(e.target.value as EstadoLivro)}>
               {ESTADOS.map(e => (
                 <option key={e} value={e}>{LABEL_ESTADO[e]}</option>
               ))}
             </select>
           </div>
+
+          <div>
+            <label className="label">Nota do estado (0-10)</label>
+            <input
+              type="number"
+              className="input"
+              value={notaEstado}
+              onChange={e => setNotaEstado(e.target.value)}
+              placeholder="Ex: 8"
+              min={0}
+              max={10}
+              step={0.5}
+            />
+          </div>
+        </div>
+
+        <div className="flex items-start gap-2 text-xs text-gray-500 bg-areia-50 rounded-xl p-3 border border-areia-200">
+          <AlertCircle size={14} className="mt-0.5 shrink-0" />
+          <p>
+            Seja honesto na avaliação do estado — a plataforma analisa as fotos com IA
+            e exibe essa avaliação independente aos compradores, ao lado da sua.
+          </p>
         </div>
 
         <div>
@@ -345,12 +361,6 @@ export default function VenderPage() {
               step={0.01}
             />
           </div>
-          {analise?.preco_sugerido && (
-            <p className="text-xs text-gray-400 mt-1">
-              💡 Sugerido pela IA: R$ {analise.preco_sugerido.toFixed(2)}
-              {analise.preco_mercado && ` (mercado: R$ ${analise.preco_mercado.toFixed(2)})`}
-            </p>
-          )}
         </div>
 
         <label className="flex items-center gap-3 cursor-pointer p-4 bg-verde-50 rounded-xl border border-verde-100">
@@ -373,26 +383,13 @@ export default function VenderPage() {
         </label>
       </div>
 
-      <div className="mt-6 flex gap-3">
-        <button
-          onClick={() => { setEtapa('upload'); setAnalise(null) }}
-          className="btn-secondary"
-        >
-          Trocar foto
-        </button>
-        <button
-          onClick={handlePublicar}
-          disabled={etapa === 'publicando'}
-          className="btn-primary flex-1"
-        >
-          {etapa === 'publicando' ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <ChevronRight size={16} />
-          )}
-          {etapa === 'publicando' ? 'Publicando...' : 'Publicar livro'}
-        </button>
-      </div>
+      <button
+        onClick={handlePublicar}
+        className="btn-primary w-full mt-6 py-3"
+      >
+        <ChevronRight size={16} />
+        Publicar livro
+      </button>
     </div>
   )
 }
