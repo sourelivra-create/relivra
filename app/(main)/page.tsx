@@ -2,14 +2,14 @@ import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import BookCard, { BookCardSkeleton } from '@/components/livros/BookCard'
 import FiltrosLivros from '@/components/livros/FiltrosLivros'
-import type { Book, EstadoLivro, CategoriaLivro } from '@/types/database.types'
+import type { Book, EstadoLivro } from '@/types/database.types'
 import { BookOpen, TrendingUp } from 'lucide-react'
 import Link from 'next/link'
 
 interface HomeProps {
   searchParams: {
     estado?: EstadoLivro
-    categoria?: CategoriaLivro
+    categoria?: string
     preco_min?: string
     preco_max?: string
     troca?: string
@@ -22,7 +22,7 @@ async function ListaLivros({ searchParams }: HomeProps) {
 
   let query = supabase
     .from('books')
-    .select('*, vendedor:profiles(id, nome)')
+    .select('*, vendedor:profiles(id, nome), categoria:categorias(id, nome)')
     .eq('vendido', false)
     .order('created_at', { ascending: false })
     .limit(60)
@@ -31,7 +31,7 @@ async function ListaLivros({ searchParams }: HomeProps) {
     query = query.eq('estado', searchParams.estado)
   }
   if (searchParams.categoria) {
-    query = query.eq('categoria', searchParams.categoria)
+    query = query.eq('categoria_id', searchParams.categoria)
   }
   if (searchParams.preco_min) {
     query = query.gte('preco', Number(searchParams.preco_min))
