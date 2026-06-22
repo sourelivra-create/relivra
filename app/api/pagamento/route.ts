@@ -6,7 +6,8 @@ const mp = new MercadoPagoConfig({
   accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN!,
 })
 
-// POST /api/pagamento – Criar preferência MP
+// POST /api/pagamento – Cria a order + preferência para o Checkout Brick
+// renderizar embutido no site (sem redirecionar para fora)
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
@@ -48,9 +49,10 @@ export async function POST(request: NextRequest) {
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL!
 
-    // Criar preferência Mercado Pago
+    // Cria a preferência — usada pelo Brick para saber os itens e valores,
+    // mas SEM redirecionar (não usamos init_point no frontend)
     const preference = new Preference(mp)
-    const { id: preferenceId, init_point } = await preference.create({
+    const { id: preferenceId } = await preference.create({
       body: {
         items: livros.map(l => ({
           id: l.id,
@@ -61,31 +63,22 @@ export async function POST(request: NextRequest) {
           currency_id: 'BRL',
         })),
         payer: { email: user.email || '' },
-        back_urls: {
-          success: `${appUrl}/painel/vendas?status=sucesso&order=${order.id}`,
-          failure: `${appUrl}/painel/vendas?status=erro&order=${order.id}`,
-          pending: `${appUrl}/painel/vendas?status=pendente&order=${order.id}`,
-        },
-        auto_return: 'approved',
         external_reference: order.id,
         notification_url: `${appUrl}/api/pagamento/webhook`,
-        payment_methods: {
-          excluded_payment_methods: [],
-          installments: 3,
-        },
       },
     })
 
-    // Salvar preference_id na order
     await supabase
       .from('orders')
       .update({ mp_preference_id: preferenceId })
       .eq('id', order.id)
 
     return NextResponse.json({
-      preference_id: preferenceId,
-      init_point,
       order_id: order.id,
+      preference_id: preferenceId,
+      valor_total: valorTotal,
+      public_key: process.env.NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY,
+      payer_email: user.email,
     })
   } catch (error) {
     console.error('[API /pagamento POST]', error)
