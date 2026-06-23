@@ -56,13 +56,30 @@ export async function POST(request: NextRequest) {
           .in('id', bookIds)
 
         if (books?.length) {
-          // Taxa real cobrada pelo MP nesse pagamento específico —
-          // vem do próprio objeto de pagamento, nunca estimada
-          const taxaRealMP = pagamento.fee_details?.reduce(
+          // Taxa real cobrada pelo MP nesse pagamento específico — vem
+          // do próprio objeto de pagamento. IMPORTANTE: o formato exato
+          // de fee_details não está 100% documentado para todos os
+          // métodos de pagamento, então usamos um fallback seguro: se
+          // não vier preenchido, assumimos a taxa de referência (4,99%)
+          // em vez de deixar a taxa zerada silenciosamente — isso evita
+          // que o vendedor receba mais do que deveria por uma falha de
+          // leitura do campo, o que seria prejuízo real para a Relivra.
+          const valorTotalPago = Number(pagamento.transaction_amount || 0)
+
+          const taxaRealMPDeclarada = pagamento.fee_details?.reduce(
             (acc, f) => acc + (f.amount || 0), 0
           ) || 0
 
-          const valorTotalPago = Number(pagamento.transaction_amount || 0)
+          const TAXA_REFERENCIA = 0.0499
+          const taxaRealMP = taxaRealMPDeclarada > 0
+            ? taxaRealMPDeclarada
+            : Number((valorTotalPago * TAXA_REFERENCIA).toFixed(2))
+
+          if (taxaRealMPDeclarada === 0) {
+            console.warn(
+              `[Webhook] fee_details vazio para payment ${paymentId} — usando taxa de referência como fallback`
+            )
+          }
 
           for (const book of books) {
             const precoVenda = Number(book.preco)
