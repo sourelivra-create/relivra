@@ -118,3 +118,43 @@ export function corEstado(estado: EstadoLivro): string {
 }
 
 export { PERCENTUAL_POR_ESTADO }
+
+// ============================================================
+// Precificação final (taxa de referência + taxa administrativa)
+// ============================================================
+//
+// Regra de negócio:
+// - O vendedor digita o PREÇO DE VENDA — é esse valor que aparece
+//   ao comprador, sem nenhum acréscimo.
+// - O sistema desconta, do preço de venda: taxa de referência
+//   (sempre a taxa mais alta do gateway, cartão de crédito) +
+//   taxa administrativa da plataforma. O que resta é o líquido
+//   que o vendedor recebe.
+// - Se o pagamento real for via Pix (taxa real menor que a de
+//   referência), a diferença economizada fica como margem extra
+//   da Relivra — o preço para o comprador NÃO muda entre métodos,
+//   e o vendedor recebe o mesmo valor líquido sempre.
+
+export const TAXA_REFERENCIA_PAGAMENTO = 0.0499  // taxa de cartão de crédito do MP
+export const TAXA_ADMINISTRATIVA_RELIVRA = 0.10   // taxa administrativa da plataforma
+
+export interface CalculoPreco {
+  precoVenda: number        // o que o vendedor digitou (= o que o comprador vê)
+  taxaReferencia: number    // valor em R$ da taxa de pagamento descontada
+  taxaAdministrativa: number // valor em R$ da taxa administrativa descontada
+  precoLiquido: number      // o que o vendedor efetivamente recebe
+}
+
+/**
+ * Calcula o valor líquido que o vendedor recebe a partir do
+ * preço de venda que ele digitou (o preço que o comprador vê).
+ */
+export function calcularPrecoFinal(precoVenda: number): CalculoPreco {
+  const taxaReferencia = Number((precoVenda * TAXA_REFERENCIA_PAGAMENTO).toFixed(2))
+  const taxaAdministrativa = Number((precoVenda * TAXA_ADMINISTRATIVA_RELIVRA).toFixed(2))
+  const precoLiquido = Number((precoVenda - taxaReferencia - taxaAdministrativa).toFixed(2))
+
+  return { precoVenda, taxaReferencia, taxaAdministrativa, precoLiquido }
+}
+
+
