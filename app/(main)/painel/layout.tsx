@@ -1,11 +1,12 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { BookOpen, ArrowLeftRight, ShoppingBag, Wallet } from 'lucide-react'
+import { BookOpen, ArrowLeftRight, ShoppingBag, Wallet, Heart } from 'lucide-react'
 
 const tabs = [
   { href: '/painel',              label: 'Resumo',       icon: Wallet },
   { href: '/painel/meus-livros', label: 'Meus livros',  icon: BookOpen },
+  { href: '/painel/favoritos',   label: 'Favoritos',    icon: Heart },
   { href: '/painel/trocas',      label: 'Trocas',       icon: ArrowLeftRight },
   { href: '/painel/vendas',      label: 'Vendas',       icon: ShoppingBag },
 ]
