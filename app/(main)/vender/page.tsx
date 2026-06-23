@@ -7,10 +7,12 @@ import {
   Loader2, CheckCircle2, Camera, AlertCircle, ChevronRight, X, ImagePlus
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { cn } from '@/lib/utils'
+import { cn, formatarMoeda } from '@/lib/utils'
+import { calcularPrecoFinal } from '@/lib/preco/calcular'
+import CompletarPerfil from './CompletarPerfil'
 import type { EstadoLivro } from '@/types/database.types'
 
-type Etapa = 'formulario' | 'publicando' | 'sucesso'
+type Etapa = 'carregando' | 'completar_perfil' | 'formulario' | 'publicando' | 'sucesso'
 
 const ESTADOS: EstadoLivro[] = ['OTIMO', 'BOM', 'REGULAR', 'RUIM']
 const LABEL_ESTADO: Record<EstadoLivro, string> = {
@@ -26,7 +28,7 @@ export default function VenderPage() {
   const inputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
 
-  const [etapa, setEtapa] = useState<Etapa>('formulario')
+  const [etapa, setEtapa] = useState<Etapa>('carregando')
   const [fotos, setFotos] = useState<File[]>([])
   const [fotosPreviews, setFotosPreviews] = useState<string[]>([])
   const [categoriasDisponiveis, setCategoriasDisponiveis] = useState<{ id: string; nome: string }[]>([])
@@ -42,6 +44,31 @@ export default function VenderPage() {
   const [preco, setPreco] = useState('')
   const [aceitaTroca, setAceitaTroca] = useState(true)
   const [erro, setErro] = useState('')
+
+  // Checa se o vendedor já tem endereço + chave Pix cadastrados.
+  // Sem isso, não é possível receber repasses financeiros — então
+  // pedimos antes de liberar o cadastro do livro.
+  useEffect(() => {
+    async function checarPerfil() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        router.push('/login?redirect=/vender')
+        return
+      }
+
+      const { data: perfil } = await supabase
+        .from('profiles')
+        .select('chave_pix, endereco, bairro, cep')
+        .eq('id', user.id)
+        .single()
+
+      const perfilCompleto = perfil?.chave_pix && perfil?.endereco && perfil?.bairro && perfil?.cep
+
+      setEtapa(perfilCompleto ? 'formulario' : 'completar_perfil')
+    }
+
+    checarPerfil()
+  }, [])
 
   useEffect(() => {
     supabase
@@ -161,6 +188,20 @@ export default function VenderPage() {
       setErro('Erro ao publicar. Tente novamente.')
       setEtapa('formulario')
     }
+  }
+
+  // ─── Tela: Carregando (checando perfil) ──────────────────────
+  if (etapa === 'carregando') {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 size={32} className="animate-spin text-verde-500" />
+      </div>
+    )
+  }
+
+  // ─── Tela: Completar perfil (endereço + Pix obrigatórios) ────
+  if (etapa === 'completar_perfil') {
+    return <CompletarPerfil onCompleto={() => setEtapa('formulario')} />
   }
 
   // ─── Tela: Publicando ────────────────────────────────────────
@@ -346,7 +387,7 @@ export default function VenderPage() {
         </div>
 
         <div>
-          <label className="label">Preço (R$) *</label>
+          <label className="label">Por quanto você quer vender (R$) *</label>
           <div className="relative">
             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">
               R$
@@ -361,6 +402,30 @@ export default function VenderPage() {
               step={0.01}
             />
           </div>
+
+          {/* Calculadora em tempo real — mostra quanto o vendedor recebe líquido */}
+          {Number(preco) > 0 && (
+            <div className="mt-2 bg-verde-50 border border-verde-100 rounded-xl p-3 text-sm space-y-1">
+              {(() => {
+                const calculo = calcularPrecoFinal(Number(preco))
+                return (
+                  <>
+                    <div className="flex justify-between text-gray-500">
+                      <span>Taxa de pagamento + taxa administrativa</span>
+                      <span>-{formatarMoeda(calculo.taxaReferencia + calculo.taxaAdministrativa)}</span>
+                    </div>
+                    <div className="flex justify-between font-semibold text-grafite pt-1 border-t border-verde-100">
+                      <span>Você recebe (líquido)</span>
+                      <span className="text-verde-deep">{formatarMoeda(calculo.precoLiquido)}</span>
+                    </div>
+                    <p className="text-xs text-gray-400 pt-1">
+                      O comprador vê o preço de {formatarMoeda(calculo.precoVenda)}, independente da forma de pagamento escolhida.
+                    </p>
+                  </>
+                )
+              })()}
+            </div>
+          )}
         </div>
 
         <label className="flex items-center gap-3 cursor-pointer p-4 bg-verde-50 rounded-xl border border-verde-100">
