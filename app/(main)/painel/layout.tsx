@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { BookOpen, ArrowLeftRight, ShoppingBag, Wallet, Heart } from 'lucide-react'
+import { BookOpen, ArrowLeftRight, ShoppingBag, Wallet, Heart, ShieldCheck } from 'lucide-react'
 
 const tabs = [
   { href: '/painel',              label: 'Resumo',       icon: Wallet },
@@ -22,11 +22,11 @@ export default async function PainelLayout({
 
   const { data } = await supabase
     .from('profiles')
-    .select('nome, saldo, rating')
+    .select('nome, saldo, rating, is_admin')
     .eq('id', user.id)
     .single()
 
-  const profile = data as { nome: string; saldo: number; rating: number } | null
+  const profile = data as { nome: string; saldo: number; rating: number; is_admin: boolean } | null
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -61,6 +61,19 @@ export default async function PainelLayout({
             {tab.label}
           </Link>
         ))}
+
+        {/* Visível apenas para administradores */}
+        {profile?.is_admin && (
+          <Link
+            href="/master"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm
+                       text-grafite bg-grafite/5 hover:bg-grafite/10
+                       transition-colors whitespace-nowrap ml-auto"
+          >
+            <ShieldCheck size={16} />
+            Painel Master
+          </Link>
+        )}
       </nav>
 
       {/* Conteúdo */}
