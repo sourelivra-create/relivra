@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import Image from 'next/image'
-import { BookOpen, Plus, Eye, Trash2 } from 'lucide-react'
+import { BookOpen, Plus, Eye, Trash2, Pencil } from 'lucide-react'
 import { formatarMoeda } from '@/lib/utils'
 import { corEstado, labelEstado } from '@/lib/preco/calcular'
 import { cn } from '@/lib/utils'
@@ -100,6 +100,11 @@ export default async function MeusLivrosPage() {
                       tipoDescontoAtual={livro.tipo_desconto}
                       valorDescontoAtual={livro.valor_desconto}
                     />
+                  )}
+                  {!livro.vendido && (
+                    <Link href={`/painel/meus-livros/${livro.id}/editar`} className="btn-ghost p-2">
+                      <Pencil size={16} />
+                    </Link>
                   )}
                   <Link href={`/livro/${livro.id}`} className="btn-ghost p-2">
                     <Eye size={16} />
