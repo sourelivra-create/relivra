@@ -60,6 +60,7 @@ export default function Header() {
   }
 
   const navLinks = [
+    { href: '/promocoes', label: 'Promoções' },
     { href: '/mais-vistos', label: 'Mais vistos' },
     { href: '/como-funciona', label: 'Como funciona' },
     { href: '/sobre', label: 'Sobre nós' },
