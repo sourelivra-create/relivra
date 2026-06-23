@@ -46,23 +46,57 @@ export async function POST(request: NextRequest) {
         // 3. Marcar livros como vendidos
         await supabase.from('books').update({ vendido: true }).in('id', bookIds)
 
-        // 4. Registrar transação para cada vendedor
+        // 4. Criar entrada no ledger financeiro — uma por livro/vendedor.
+        // Usa mp_payment_id como chave de idempotência: se o webhook for
+        // chamado de novo para o mesmo pagamento (comum no MP), o UNIQUE
+        // da coluna impede duplicar a entrada financeira.
         const { data: books } = await supabase
           .from('books')
           .select('id, preco, vendedor_id, titulo')
           .in('id', bookIds)
 
         if (books?.length) {
-          await supabase.from('transactions').insert(
-            books.map(b => ({
-              vendedor_id: b.vendedor_id,
-              order_id:    orderId,
-              valor:       b.preco,
-              tipo:        'VENDA' as const,
-              status:      'PAGO'  as const,
-              descricao:   `Venda: "${b.titulo}"`,
-            }))
-          )
+          // Taxa real cobrada pelo MP nesse pagamento específico —
+          // vem do próprio objeto de pagamento, nunca estimada
+          const taxaRealMP = pagamento.fee_details?.reduce(
+            (acc, f) => acc + (f.amount || 0), 0
+          ) || 0
+
+          const valorTotalPago = Number(pagamento.transaction_amount || 0)
+
+          for (const book of books) {
+            const precoVenda = Number(book.preco)
+            // Rateia a taxa real do MP proporcionalmente ao preço de
+            // cada livro, caso o pedido tenha múltiplos itens
+            const proporcao = valorTotalPago > 0 ? precoVenda / valorTotalPago : 1
+            const taxaMpRateada = Number((taxaRealMP * proporcao).toFixed(2))
+            const taxaRelivra = Number((precoVenda * 0.10).toFixed(2))
+            const valorLiquido = Number((precoVenda - taxaMpRateada - taxaRelivra).toFixed(2))
+
+            // Chave de idempotência composta: mesmo pagamento + mesmo
+            // livro nunca gera duas entradas (insert simplesmente falha
+            // silenciosamente na segunda tentativa, graças ao UNIQUE)
+            await supabase
+              .from('ledger_financeiro')
+              .insert({
+                order_id: orderId,
+                vendedor_id: book.vendedor_id,
+                book_id: book.id,
+                valor_bruto: precoVenda,
+                taxa_mercado_pago: taxaMpRateada,
+                taxa_relivra: taxaRelivra,
+                valor_liquido_vendedor: valorLiquido,
+                mp_payment_id: `${paymentId}_${book.id}`,
+                status: 'PENDENTE',
+              })
+              .select()
+              // Erro de UNIQUE violado é esperado em retries — ignora
+              .then(({ error }) => {
+                if (error && !error.message.includes('duplicate')) {
+                  console.error('[Ledger insert]', error)
+                }
+              })
+          }
         }
       }
     } else if (pagamento.status === 'cancelled' || pagamento.status === 'rejected') {
