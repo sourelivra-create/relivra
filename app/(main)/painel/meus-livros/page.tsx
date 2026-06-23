@@ -6,6 +6,7 @@ import { formatarMoeda } from '@/lib/utils'
 import { corEstado, labelEstado } from '@/lib/preco/calcular'
 import { cn } from '@/lib/utils'
 import DeleteBook from './DeleteBook'
+import GerenciarDesconto from './GerenciarDesconto'
 
 export default async function MeusLivrosPage() {
   const supabase = createClient()
@@ -37,56 +38,77 @@ export default async function MeusLivrosPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {livros.map(livro => (
-            <div
-              key={livro.id}
-              className={cn(
-                'card flex items-center gap-4 p-4',
-                livro.vendido && 'opacity-60'
-              )}
-            >
-              {/* Imagem */}
-              <div className="relative w-12 h-16 rounded-lg overflow-hidden shrink-0 bg-areia-100">
-                {livro.imagem_url ? (
-                  <Image src={livro.imagem_url} alt={livro.titulo} fill className="object-cover" />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <BookOpen size={16} className="text-areia-400" />
-                  </div>
+          {livros.map(livro => {
+            const temDesconto = livro.tipo_desconto && livro.valor_desconto && livro.preco_final < livro.preco
+            return (
+              <div
+                key={livro.id}
+                className={cn(
+                  'card flex items-center gap-4 p-4',
+                  livro.vendido && 'opacity-60'
                 )}
-              </div>
-
-              {/* Info */}
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm text-grafite truncate">{livro.titulo}</p>
-                <p className="text-xs text-gray-500">{livro.autor}</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={cn('badge-estado text-xs', corEstado(livro.estado))}>
-                    {labelEstado(livro.estado)}
-                  </span>
-                  {livro.vendido && (
-                    <span className="text-xs text-gray-400 font-medium">Vendido</span>
-                  )}
-                  {livro.aceita_troca && !livro.vendido && (
-                    <span className="text-xs text-verde-600 font-medium">↔ Troca</span>
+              >
+                {/* Imagem */}
+                <div className="relative w-12 h-16 rounded-lg overflow-hidden shrink-0 bg-areia-100">
+                  {livro.imagem_url ? (
+                    <Image src={livro.imagem_url} alt={livro.titulo} fill className="object-cover" />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <BookOpen size={16} className="text-areia-400" />
+                    </div>
                   )}
                 </div>
-              </div>
 
-              {/* Preço */}
-              <p className="text-verde-600 font-bold text-sm shrink-0">
-                {formatarMoeda(livro.preco)}
-              </p>
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm text-grafite truncate">{livro.titulo}</p>
+                  <p className="text-xs text-gray-500">{livro.autor}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className={cn('badge-estado text-xs', corEstado(livro.estado))}>
+                      {labelEstado(livro.estado)}
+                    </span>
+                    {livro.vendido && (
+                      <span className="text-xs text-gray-400 font-medium">Vendido</span>
+                    )}
+                    {livro.aceita_troca && !livro.vendido && (
+                      <span className="text-xs text-verde-600 font-medium">↔ Troca</span>
+                    )}
+                    {temDesconto && (
+                      <span className="text-xs text-red-500 font-medium">🏷️ Desconto</span>
+                    )}
+                  </div>
+                </div>
 
-              {/* Ações */}
-              <div className="flex items-center gap-1 shrink-0">
-                <Link href={`/livro/${livro.id}`} className="btn-ghost p-2">
-                  <Eye size={16} />
-                </Link>
-                {!livro.vendido && <DeleteBook bookId={livro.id} />}
+                {/* Preço */}
+                <div className="text-right shrink-0">
+                  {temDesconto ? (
+                    <>
+                      <p className="text-xs text-gray-400 line-through">{formatarMoeda(livro.preco)}</p>
+                      <p className="text-verde-600 font-bold text-sm">{formatarMoeda(livro.preco_final)}</p>
+                    </>
+                  ) : (
+                    <p className="text-verde-600 font-bold text-sm">{formatarMoeda(livro.preco)}</p>
+                  )}
+                </div>
+
+                {/* Ações */}
+                <div className="flex items-center gap-1 shrink-0">
+                  {!livro.vendido && (
+                    <GerenciarDesconto
+                      bookId={livro.id}
+                      preco={Number(livro.preco)}
+                      tipoDescontoAtual={livro.tipo_desconto}
+                      valorDescontoAtual={livro.valor_desconto}
+                    />
+                  )}
+                  <Link href={`/livro/${livro.id}`} className="btn-ghost p-2">
+                    <Eye size={16} />
+                  </Link>
+                  {!livro.vendido && <DeleteBook bookId={livro.id} />}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
