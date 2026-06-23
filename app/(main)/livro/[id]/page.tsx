@@ -4,10 +4,11 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { formatarMoeda, formatarData, cn } from '@/lib/utils'
 import { corEstado, labelEstado } from '@/lib/preco/calcular'
-import { Star, Calendar, User, BookOpen, Sparkles, AlertCircle } from 'lucide-react'
+import { Star, Calendar, User, BookOpen, Sparkles, AlertCircle, Tag } from 'lucide-react'
 import BotoesAcao from './BotoesAcao'
 import GaleriaFotos from './GaleriaFotos'
 import BotaoAvaliacaoIA from '@/components/livros/BotaoAvaliacaoIA'
+import BotaoFavorito from '@/components/livros/BotaoFavorito'
 import { MAX_TENTATIVAS_AVALIACAO_IA } from '@/lib/ia/analisar-livro'
 import type { Book, Categoria, Profile } from '@/types/database.types'
 
@@ -34,9 +35,22 @@ export default async function PaginaLivro({ params }: PageProps) {
   const { data: { user } } = await supabase.auth.getUser()
   const isProprioLivro = user?.id === livro.vendedor_id
 
+  // Verifica se o usuário logado já favoritou este livro
+  let jaFavoritado = false
+  if (user) {
+    const { data: favorito } = await supabase
+      .from('favoritos')
+      .select('id')
+      .eq('usuario_id', user.id)
+      .eq('book_id', livro.id)
+      .maybeSingle()
+    jaFavoritado = !!favorito
+  }
+
   // Fallback para livros antigos que só tinham imagem_url (1 foto)
   const fotos = livro.fotos?.length ? livro.fotos : (livro.imagem_url ? [livro.imagem_url] : [])
   const tentativasRestantes = MAX_TENTATIVAS_AVALIACAO_IA - (livro.tentativas_avaliacao_ia || 0)
+  const temDesconto = livro.tipo_desconto && livro.valor_desconto && livro.preco_final < livro.preco
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
@@ -86,17 +100,39 @@ export default async function PaginaLivro({ params }: PageProps) {
             </div>
           )}
 
-          <h1 className="font-display text-2xl md:text-3xl font-bold text-grafite leading-tight text-balance">
-            {livro.titulo}
-          </h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="font-display text-2xl md:text-3xl font-bold text-grafite leading-tight text-balance">
+              {livro.titulo}
+            </h1>
+            <BotaoFavorito
+              bookId={livro.id}
+              favoritadoInicial={jaFavoritado}
+              userId={user?.id || null}
+              className="w-10 h-10 bg-areia-50 border border-areia-200 shrink-0 mt-1"
+            />
+          </div>
           <p className="text-gray-500 text-lg mt-1">{livro.autor}</p>
           {livro.versao && (
             <p className="text-gray-400 text-sm mt-0.5">{livro.versao}</p>
           )}
 
-          {/* Preço */}
+          {/* Preço — mostra desconto quando aplicável */}
           <div className="mt-6">
-            <p className="text-verde-600 font-bold text-3xl">{formatarMoeda(livro.preco)}</p>
+            {temDesconto ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-gray-400 text-lg line-through">{formatarMoeda(livro.preco)}</p>
+                <p className="text-verde-600 font-bold text-3xl">{formatarMoeda(livro.preco_final)}</p>
+                <span className="inline-flex items-center gap-1 bg-red-50 text-red-600 text-xs font-semibold px-2 py-1 rounded-full">
+                  <Tag size={10} />
+                  {livro.tipo_desconto === 'PERCENTUAL'
+                    ? `-${livro.valor_desconto}%`
+                    : `-${formatarMoeda(livro.valor_desconto!)}`
+                  }
+                </span>
+              </div>
+            ) : (
+              <p className="text-verde-600 font-bold text-3xl">{formatarMoeda(livro.preco)}</p>
+            )}
             {livro.preco_sugerido && livro.preco !== livro.preco_sugerido && (
               <p className="text-xs text-gray-400 mt-0.5">
                 Preço sugerido: {formatarMoeda(livro.preco_sugerido)}
