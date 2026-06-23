@@ -38,6 +38,8 @@ export interface Profile {
 
 export type StatusAvaliacaoIA = 'NAO_SOLICITADA' | 'PROCESSANDO' | 'CONCLUIDA' | 'ERRO'
 
+export type TipoDesconto = 'PERCENTUAL' | 'VALOR_FIXO'
+
 export interface Book {
   id: string
   titulo: string
@@ -49,6 +51,9 @@ export interface Book {
   nota_estado: number | null         // nota do VENDEDOR (manual)
   preco: number
   preco_sugerido: number | null
+  tipo_desconto: TipoDesconto | null
+  valor_desconto: number | null      // percentual (0-100) ou R$, depende de tipo_desconto
+  preco_final: number                // calculado automaticamente pelo banco
   aceita_troca: boolean
   imagem_url: string | null          // DEPRECATED — mantido só para dados antigos
   fotos: string[]                    // mínimo 3: [capa, interna, verso, ...extras]
@@ -67,6 +72,15 @@ export interface Book {
   // Join
   vendedor?: Profile
   categoria?: Categoria
+}
+
+export interface Favorito {
+  id: string
+  usuario_id: string
+  book_id: string
+  created_at: string
+  // Join
+  book?: Book
 }
 
 export interface Order {
