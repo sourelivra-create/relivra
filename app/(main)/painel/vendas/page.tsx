@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { formatarMoeda, formatarData, cn } from '@/lib/utils'
 import { ShoppingBag, TrendingUp, CheckCircle2, Clock, XCircle } from 'lucide-react'
+import ConfirmarRecebimento from './ConfirmarRecebimento'
 
 const STATUS_ORDER: Record<string, { label: string; icon: typeof CheckCircle2; cor: string }> = {
   PENDENTE:  { label: 'Pendente',  icon: Clock,         cor: 'text-amber-500' },
@@ -27,7 +28,7 @@ export default async function VendasPage() {
       *,
       order_items(
         *,
-        book:books(titulo, autor, imagem_url)
+        book:books(titulo, autor, imagem_url, vendedor_id, vendedor:profiles(nome))
       )
     `)
     .eq('comprador_id', user!.id)
@@ -142,6 +143,16 @@ export default async function VendasPage() {
                     ))}
                   </div>
                   <p className="text-xs text-gray-400 mt-2">{formatarData(order.created_at)}</p>
+
+                  {/* Botão de confirmação — só aparece para pedidos pagos
+                      ainda não confirmados como entregues */}
+                  {order.status === 'PAGO' && itens[0]?.book?.vendedor_id && (
+                    <ConfirmarRecebimento
+                      orderId={order.id}
+                      vendedorId={itens[0].book.vendedor_id}
+                      vendedorNome={itens[0].book.vendedor?.nome || 'o vendedor'}
+                    />
+                  )}
                 </div>
               )
             })}
