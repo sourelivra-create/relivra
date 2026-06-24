@@ -58,7 +58,9 @@ export interface Book {
   imagem_url: string | null          // DEPRECATED — mantido só para dados antigos
   fotos: string[]                    // mínimo 3: [capa, interna, verso, ...extras]
   vendedor_id: string
-  vendido: boolean
+  vendido: boolean                   // derivado automaticamente: quantidade_disponivel === 0
+  quantidade_total: number           // total de cópias idênticas anunciadas
+  quantidade_disponivel: number      // quantas ainda restam para vender
   created_at: string
   // Avaliação independente da IA — segunda opinião, não sobrescreve
   // a escolha do vendedor, só é exibida ao lado para o comprador
@@ -102,6 +104,7 @@ export interface OrderItem {
   order_id: string
   book_id: string
   preco: number
+  quantidade: number
   // Join
   book?: Book
 }
