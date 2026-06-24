@@ -4,12 +4,10 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { formatarMoeda, formatarData, cn } from '@/lib/utils'
 import { corEstado, labelEstado } from '@/lib/preco/calcular'
-import { Star, Calendar, User, BookOpen, Sparkles, AlertCircle, Tag } from 'lucide-react'
+import { Star, Calendar, User, BookOpen, Tag } from 'lucide-react'
 import BotoesAcao from './BotoesAcao'
 import GaleriaFotos from './GaleriaFotos'
-import BotaoAvaliacaoIA from '@/components/livros/BotaoAvaliacaoIA'
 import BotaoFavorito from '@/components/livros/BotaoFavorito'
-import { MAX_TENTATIVAS_AVALIACAO_IA } from '@/lib/ia/analisar-livro'
 import type { Book, Categoria, Profile } from '@/types/database.types'
 
 interface PageProps {
@@ -49,7 +47,6 @@ export default async function PaginaLivro({ params }: PageProps) {
 
   // Fallback para livros antigos que só tinham imagem_url (1 foto)
   const fotos = livro.fotos?.length ? livro.fotos : (livro.imagem_url ? [livro.imagem_url] : [])
-  const tentativasRestantes = MAX_TENTATIVAS_AVALIACAO_IA - (livro.tentativas_avaliacao_ia || 0)
   const temDesconto = livro.tipo_desconto && livro.valor_desconto && livro.preco_final < livro.preco
 
   return (
@@ -70,35 +67,6 @@ export default async function PaginaLivro({ params }: PageProps) {
             </span>
             <span className="text-xs text-gray-400">declarado pelo vendedor</span>
           </div>
-
-          {/* Segunda opinião da IA — só aparece se já foi avaliado */}
-          {livro.status_avaliacao_ia === 'CONCLUIDA' && livro.estado_ia && (
-            <div className="flex items-start gap-2 bg-verde-50 border border-verde-100 rounded-xl p-3 mb-4">
-              <Sparkles size={16} className="text-verde-600 mt-0.5 shrink-0" />
-              <div>
-                <p className="text-xs font-semibold text-verde-700">
-                  Avaliação da IA: {labelEstado(livro.estado_ia)}
-                  {livro.nota_ia != null && ` (${livro.nota_ia}/10)`}
-                </p>
-                {livro.descricao_estado_ia && (
-                  <p className="text-xs text-gray-500 mt-0.5">{livro.descricao_estado_ia}</p>
-                )}
-                {livro.estado_ia !== livro.estado && (
-                  <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
-                    <AlertCircle size={12} />
-                    Diverge da avaliação do vendedor — confira as fotos com atenção
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {livro.status_avaliacao_ia === 'PROCESSANDO' && (
-            <div className="flex items-center gap-2 text-sm text-gray-500 bg-areia-50 rounded-xl p-3 mb-4 border border-areia-200">
-              <Sparkles size={14} className="animate-pulse text-verde-500" />
-              Aguardando avaliação da IA...
-            </div>
-          )}
 
           <div className="flex items-start justify-between gap-3">
             <h1 className="font-display text-2xl md:text-3xl font-bold text-grafite leading-tight text-balance">
@@ -184,17 +152,6 @@ export default async function PaginaLivro({ params }: PageProps) {
             </div>
           </div>
 
-          {/* Botão de avaliação IA — só o dono vê */}
-          {isProprioLivro && livro.status_avaliacao_ia !== 'CONCLUIDA' && (
-            <div className="mt-4">
-              <BotaoAvaliacaoIA
-                livroId={livro.id}
-                statusAtual={livro.status_avaliacao_ia}
-                tentativasRestantes={tentativasRestantes}
-              />
-            </div>
-          )}
-
           {/* Botões de ação */}
           <div className="mt-6 space-y-3">
             {isProprioLivro ? (
@@ -211,6 +168,7 @@ export default async function PaginaLivro({ params }: PageProps) {
                 aceitaTroca={livro.aceita_troca}
                 userId={user?.id || null}
                 vendedorId={livro.vendedor_id}
+                quantidadeDisponivel={livro.quantidade_disponivel ?? 1}
               />
             )}
           </div>
