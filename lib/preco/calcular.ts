@@ -120,6 +120,66 @@ export function corEstado(estado: EstadoLivro): string {
 export { PERCENTUAL_POR_ESTADO }
 
 // ============================================================
+// Recalcular preços sugeridos ao mudar nota/estado manualmente
+// ============================================================
+//
+// Quando a IA analisa as fotos, ela retorna um preço de referência
+// de mercado (preco_usado) junto com a nota/estado que ela mesma
+// percebeu. Se o vendedor depois ajustar a nota ou o estado no
+// formulário, recalculamos os 3 preços sugeridos localmente —
+// instantâneo, sem gastar cota da API chamando a IA de novo.
+
+export interface PrecosRecalculados {
+  vendaRapida: number
+  sugerido: number
+  maximo: number
+}
+
+/**
+ * Recalcula os preços sugeridos a partir de um preço de mercado de
+ * referência (geralmente o "preco_usado" que a IA retornou na
+ * primeira análise) e da nota/estado atuais escolhidos pelo vendedor.
+ *
+ * A lógica segue o mesmo princípio das regras de precificação:
+ * nota mais baixa = desconto maior sobre o preço de mercado.
+ */
+export function recalcularPrecosPorNota(
+  precoMercadoReferencia: number,
+  nota: number
+): PrecosRecalculados {
+  if (!precoMercadoReferencia || precoMercadoReferencia <= 0) {
+    return { vendaRapida: 8, sugerido: 8, maximo: 8 }
+  }
+
+  // Nota 0-10 mapeada para um percentual do preço de mercado:
+  // nota 10 → ~90% | nota 5 → ~50% | nota 0 → ~20%
+  const percentualBase = 0.20 + (clampNota(nota) / 10) * 0.70
+
+  const sugerido = arredondarPsicologico(precoMercadoReferencia * percentualBase)
+  const vendaRapida = arredondarPsicologico(sugerido * 0.85)  // ~15% mais barato, para girar rápido
+  const maximo = arredondarPsicologico(sugerido * 1.20)        // ~20% mais caro, testando margem
+
+  return {
+    vendaRapida: Math.max(8, vendaRapida),
+    sugerido: Math.max(8, sugerido),
+    maximo: Math.max(8, maximo),
+  }
+}
+
+function clampNota(nota: number): number {
+  return Math.min(10, Math.max(0, nota))
+}
+
+/**
+ * Arredonda para um "preço psicológico" comum em e-commerce:
+ * termina em ,90. Ex: 17.34 → 17.90 | 8.05 → 8.90
+ */
+function arredondarPsicologico(valor: number): number {
+  const inteiro = Math.floor(valor)
+  return Number((inteiro + 0.90).toFixed(2))
+}
+
+// ============================================================
 // Precificação final (taxa de referência + taxa administrativa)
 // ============================================================
 //
