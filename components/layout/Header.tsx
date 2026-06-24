@@ -32,14 +32,23 @@ export default function Header() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // Categorias são dinâmicas (a IA pode criar novas), então buscamos
-  // a lista atual em vez de usar uma lista fixa no menu.
+  // Categorias são dinâmicas (a IA pode criar novas), mas só mostramos
+  // no menu as que realmente têm pelo menos um livro disponível à
+  // venda agora — evita listar categorias "fantasma" sem anúncios ativos.
   useEffect(() => {
     supabase
-      .from('categorias')
-      .select('id, nome')
-      .order('nome', { ascending: true })
-      .then(({ data }) => setCategorias(data || []))
+      .from('books')
+      .select('categoria:categorias(id, nome)')
+      .eq('vendido', false)
+      .then(({ data }) => {
+        const vistos = new Map<string, CategoriaResumo>()
+        for (const item of data || []) {
+          const cat = item.categoria as unknown as CategoriaResumo | null
+          if (cat && !vistos.has(cat.id)) vistos.set(cat.id, cat)
+        }
+        const unicas = Array.from(vistos.values()).sort((a, b) => a.nome.localeCompare(b.nome))
+        setCategorias(unicas)
+      })
   }, [])
 
   // Fecha o dropdown de categorias ao clicar fora dele
