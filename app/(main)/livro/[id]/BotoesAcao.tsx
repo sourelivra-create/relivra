@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShoppingCart, ArrowLeftRight, Loader2 } from 'lucide-react'
+import { ShoppingCart, ArrowLeftRight, Loader2, Minus, Plus } from 'lucide-react'
 import Link from 'next/link'
 import CheckoutModal from './CheckoutModal'
 
@@ -11,6 +11,7 @@ interface BotoesAcaoProps {
   aceitaTroca: boolean
   userId: string | null
   vendedorId: string
+  quantidadeDisponivel: number
 }
 
 interface DadosCheckout {
@@ -21,9 +22,10 @@ interface DadosCheckout {
   payer_email: string
 }
 
-export default function BotoesAcao({ livroId, aceitaTroca, userId, vendedorId }: BotoesAcaoProps) {
+export default function BotoesAcao({ livroId, aceitaTroca, userId, vendedorId, quantidadeDisponivel }: BotoesAcaoProps) {
   const router = useRouter()
   const [comprando, setComprando] = useState(false)
+  const [quantidade, setQuantidade] = useState(1)
   const [dadosCheckout, setDadosCheckout] = useState<DadosCheckout | null>(null)
 
   const handleComprar = async () => {
@@ -37,7 +39,7 @@ export default function BotoesAcao({ livroId, aceitaTroca, userId, vendedorId }:
       const res = await fetch('/api/pagamento', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ livro_ids: [livroId] }),
+        body: JSON.stringify({ livro_ids: [livroId], quantidade }),
       })
 
       const data = await res.json()
@@ -61,6 +63,31 @@ export default function BotoesAcao({ livroId, aceitaTroca, userId, vendedorId }:
   return (
     <>
       <div className="space-y-3">
+        {/* Seletor de quantidade — só aparece se houver mais de 1
+            cópia disponível desse anúncio */}
+        {quantidadeDisponivel > 1 && (
+          <div className="flex items-center justify-between bg-areia-50 border border-areia-200 rounded-xl p-3">
+            <span className="text-sm text-gray-600">Quantidade</span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setQuantidade(q => Math.max(1, q - 1))}
+                disabled={quantidade <= 1}
+                className="w-8 h-8 rounded-lg bg-white border border-areia-300 flex items-center justify-center disabled:opacity-40"
+              >
+                <Minus size={14} />
+              </button>
+              <span className="font-semibold text-grafite w-6 text-center">{quantidade}</span>
+              <button
+                onClick={() => setQuantidade(q => Math.min(quantidadeDisponivel, q + 1))}
+                disabled={quantidade >= quantidadeDisponivel}
+                className="w-8 h-8 rounded-lg bg-white border border-areia-300 flex items-center justify-center disabled:opacity-40"
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
         <button
           onClick={handleComprar}
           disabled={comprando}
