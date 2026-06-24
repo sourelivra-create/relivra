@@ -34,17 +34,27 @@ export async function POST(request: NextRequest) {
         .update({ status: 'PAGO', mp_payment_id: String(paymentId) })
         .eq('id', orderId)
 
-      // 2. Buscar itens do pedido
+      // 2. Buscar itens do pedido (agora incluindo a quantidade comprada)
       const { data: items } = await supabase
         .from('order_items')
-        .select('book_id')
+        .select('book_id, quantidade')
         .eq('order_id', orderId)
 
       if (items?.length) {
-        const bookIds = items.map(i => i.book_id)
+        // 3. Decrementar o estoque de cada livro pela quantidade
+        // comprada — o trigger do banco sincroniza automaticamente
+        // o campo "vendido" quando quantidade_disponivel chega a 0.
+        // Usamos uma function RPC para fazer o decremento de forma
+        // atômica (evita corrida se duas compras chegarem juntas).
+        for (const item of items) {
+          await supabase.rpc('decrementar_estoque_livro', {
+            p_book_id: item.book_id,
+            p_quantidade: item.quantidade || 1,
+          })
+        }
 
-        // 3. Marcar livros como vendidos
-        await supabase.from('books').update({ vendido: true }).in('id', bookIds)
+        const bookIds = items.map(i => i.book_id)
+        const quantidadePorLivro = new Map(items.map(i => [i.book_id, i.quantidade || 1]))
 
         // 4. Criar entrada no ledger financeiro — uma por livro/vendedor.
         // Usa mp_payment_id como chave de idempotência: se o webhook for
@@ -52,7 +62,7 @@ export async function POST(request: NextRequest) {
         // da coluna impede duplicar a entrada financeira.
         const { data: books } = await supabase
           .from('books')
-          .select('id, preco, vendedor_id, titulo')
+          .select('id, preco_final, vendedor_id, titulo')
           .in('id', bookIds)
 
         if (books?.length) {
@@ -82,13 +92,15 @@ export async function POST(request: NextRequest) {
           }
 
           for (const book of books) {
-            const precoVenda = Number(book.preco)
-            // Rateia a taxa real do MP proporcionalmente ao preço de
-            // cada livro, caso o pedido tenha múltiplos itens
-            const proporcao = valorTotalPago > 0 ? precoVenda / valorTotalPago : 1
+            const quantidadeComprada = quantidadePorLivro.get(book.id) || 1
+            const valorBrutoTotal = Number(book.preco_final) * quantidadeComprada
+
+            // Rateia a taxa real do MP proporcionalmente ao valor total
+            // desse item, caso o pedido tenha múltiplos livros diferentes
+            const proporcao = valorTotalPago > 0 ? valorBrutoTotal / valorTotalPago : 1
             const taxaMpRateada = Number((taxaRealMP * proporcao).toFixed(2))
-            const taxaRelivra = Number((precoVenda * 0.10).toFixed(2))
-            const valorLiquido = Number((precoVenda - taxaMpRateada - taxaRelivra).toFixed(2))
+            const taxaRelivra = Number((valorBrutoTotal * 0.10).toFixed(2))
+            const valorLiquido = Number((valorBrutoTotal - taxaMpRateada - taxaRelivra).toFixed(2))
 
             // Chave de idempotência composta: mesmo pagamento + mesmo
             // livro nunca gera duas entradas (insert simplesmente falha
@@ -99,7 +111,7 @@ export async function POST(request: NextRequest) {
                 order_id: orderId,
                 vendedor_id: book.vendedor_id,
                 book_id: book.id,
-                valor_bruto: precoVenda,
+                valor_bruto: valorBrutoTotal,
                 taxa_mercado_pago: taxaMpRateada,
                 taxa_relivra: taxaRelivra,
                 valor_liquido_vendedor: valorLiquido,
