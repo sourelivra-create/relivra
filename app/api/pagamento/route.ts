@@ -14,10 +14,15 @@ export async function POST(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
 
-    const { livro_ids } = await request.json()
+    const { livro_ids, quantidade } = await request.json()
     if (!livro_ids?.length) return NextResponse.json({ error: 'Livros obrigatórios' }, { status: 400 })
 
-    // Buscar livros
+    // Por ora o checkout só suporta comprar 1 livro por vez (mas N
+    // unidades dele) — múltiplos livros diferentes no carrinho ainda
+    // não é suportado nessa tela
+    const quantidadeDesejada = Math.max(1, Number(quantidade) || 1)
+
+    // Buscar livro
     const { data: livros } = await supabase
       .from('books')
       .select('*, vendedor:profiles(nome)')
@@ -26,7 +31,18 @@ export async function POST(request: NextRequest) {
 
     if (!livros?.length) return NextResponse.json({ error: 'Livros não disponíveis' }, { status: 400 })
 
-    const valorTotal = livros.reduce((acc, l) => acc + Number(l.preco), 0)
+    // Valida que o estoque suporta a quantidade pedida — proteção
+    // contra comprar mais do que existe (ex: duas abas comprando
+    // a última unidade ao mesmo tempo)
+    const livroPrincipal = livros[0]
+    if (quantidadeDesejada > (livroPrincipal.quantidade_disponivel ?? 1)) {
+      return NextResponse.json(
+        { error: 'Quantidade solicitada maior que o disponível' },
+        { status: 400 }
+      )
+    }
+
+    const valorTotal = Number(livroPrincipal.preco_final) * quantidadeDesejada
 
     // Criar order no banco
     const { data: order } = await supabase
@@ -42,10 +58,13 @@ export async function POST(request: NextRequest) {
 
     if (!order) return NextResponse.json({ error: 'Erro ao criar pedido' }, { status: 500 })
 
-    // Inserir itens
-    await supabase.from('order_items').insert(
-      livros.map(l => ({ order_id: order.id, book_id: l.id, preco: l.preco }))
-    )
+    // Inserir item com a quantidade desejada
+    await supabase.from('order_items').insert({
+      order_id: order.id,
+      book_id: livroPrincipal.id,
+      preco: livroPrincipal.preco_final,
+      quantidade: quantidadeDesejada,
+    })
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL!
 
@@ -54,14 +73,14 @@ export async function POST(request: NextRequest) {
     const preference = new Preference(mp)
     const { id: preferenceId } = await preference.create({
       body: {
-        items: livros.map(l => ({
-          id: l.id,
-          title: l.titulo,
-          description: `${l.autor} – Estado: ${l.estado}`,
-          quantity: 1,
-          unit_price: Number(l.preco),
+        items: [{
+          id: livroPrincipal.id,
+          title: livroPrincipal.titulo,
+          description: `${livroPrincipal.autor} – Estado: ${livroPrincipal.estado}`,
+          quantity: quantidadeDesejada,
+          unit_price: Number(livroPrincipal.preco_final),
           currency_id: 'BRL',
-        })),
+        }],
         payer: { email: user.email || '' },
         external_reference: order.id,
         notification_url: `${appUrl}/api/pagamento/webhook`,
