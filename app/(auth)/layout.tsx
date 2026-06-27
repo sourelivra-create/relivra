@@ -10,7 +10,7 @@ export default function AuthLayout({
     <div className="min-h-screen bg-relivra-soft flex flex-col items-center justify-center px-4 py-12">
       {/* Logo */}
       <Link href="/" className="mb-8">
-        <Logo size={34} />
+        <Logo iconSize={20} textSize={30} />
       </Link>
 
       {/* Card */}
