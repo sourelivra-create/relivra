@@ -20,6 +20,7 @@ export default async function MaisVistosPage() {
     .from('books')
     .select('*, vendedor:profiles(id, nome), categoria:categorias(id, nome)')
     .eq('vendido', false)
+    .eq('destino', 'VENDA')
     .order('created_at', { ascending: false })
     .limit(24)
 

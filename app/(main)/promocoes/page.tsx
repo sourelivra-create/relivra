@@ -15,6 +15,7 @@ export default async function PromocoesPage() {
     .from('books')
     .select('*, vendedor:profiles(id, nome), categoria:categorias(id, nome)')
     .eq('vendido', false)
+    .eq('destino', 'VENDA')
     .not('tipo_desconto', 'is', null)
     .order('created_at', { ascending: false })
     .limit(60)

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { BookOpen, ArrowLeftRight, ShoppingBag, Wallet, Heart, ShieldCheck } from 'lucide-react'
+import { BookOpen, ArrowLeftRight, ShoppingBag, Wallet, Heart, ShieldCheck, Settings, MessageCircle } from 'lucide-react'
 
 const tabs = [
   { href: '/painel',              label: 'Resumo',       icon: Wallet },
@@ -28,6 +28,26 @@ export default async function PainelLayout({
 
   const profile = data as { nome: string; saldo: number; rating: number; is_admin: boolean } | null
 
+  // Contagem de mensagens não lidas — duas queries simples (conversas
+  // do usuário, depois mensagens não lidas nelas) em vez de um join
+  // complexo, já que o volume aqui é sempre pequeno por usuário
+  let mensagensNaoLidas = 0
+  const { data: minhasConversas } = await supabase
+    .from('conversas')
+    .select('id')
+    .or(`comprador_id.eq.${user.id},vendedor_id.eq.${user.id}`)
+
+  const idsConversas = (minhasConversas || []).map(c => c.id)
+  if (idsConversas.length > 0) {
+    const { count } = await supabase
+      .from('mensagens')
+      .select('id', { count: 'exact', head: true })
+      .in('conversa_id', idsConversas)
+      .neq('remetente_id', user.id)
+      .is('lida_em', null)
+    mensagensNaoLidas = count || 0
+  }
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
       {/* Header do painel */}
@@ -35,7 +55,7 @@ export default async function PainelLayout({
         <div className="w-12 h-12 bg-verde-deep rounded-full flex items-center justify-center text-white font-display font-bold text-lg">
           {profile?.nome?.charAt(0).toUpperCase() || '?'}
         </div>
-        <div>
+        <div className="flex-1">
           <p className="font-display font-bold text-lg text-grafite">{profile?.nome}</p>
           <div className="flex items-center gap-3 text-sm text-grafite-light">
             <span>⭐ {profile?.rating?.toFixed(1)}</span>
@@ -45,6 +65,14 @@ export default async function PainelLayout({
             </span>
           </div>
         </div>
+        <Link
+          href="/painel/perfil"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium
+                     text-grafite-light hover:text-grafite hover:bg-white/60 transition-colors shrink-0"
+        >
+          <Settings size={16} />
+          <span className="hidden sm:inline">Editar perfil</span>
+        </Link>
       </div>
 
       {/* Tabs de navegação */}
@@ -61,6 +89,22 @@ export default async function PainelLayout({
             {tab.label}
           </Link>
         ))}
+
+        <Link
+          href="/painel/mensagens"
+          className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm
+                     text-grafite-light hover:text-grafite hover:bg-areia-100
+                     transition-colors whitespace-nowrap"
+        >
+          <MessageCircle size={16} />
+          Mensagens
+          {mensagensNaoLidas > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold
+                             w-4 h-4 rounded-full flex items-center justify-center">
+              {mensagensNaoLidas > 9 ? '9+' : mensagensNaoLidas}
+            </span>
+          )}
+        </Link>
 
         {/* Visível apenas para administradores */}
         {profile?.is_admin && (

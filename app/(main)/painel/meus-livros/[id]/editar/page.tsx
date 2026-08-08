@@ -7,14 +7,9 @@ import {
   Loader2, CheckCircle2, AlertCircle, ChevronRight, X, ImagePlus
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import type { EstadoLivro } from '@/types/database.types'
+import { ESCALA_CLASSIFICACAO, nivelPorNota, ehDoacao, estadoLegadoPorNota } from '@/lib/classificacao/escala'
 
 type Etapa = 'carregando' | 'formulario' | 'salvando' | 'sucesso'
-
-const ESTADOS: EstadoLivro[] = ['OTIMO', 'BOM', 'REGULAR', 'RUIM']
-const LABEL_ESTADO: Record<EstadoLivro, string> = {
-  OTIMO: 'Ótimo', BOM: 'Bom', REGULAR: 'Regular', RUIM: 'Ruim'
-}
 
 const LABELS_FOTO = ['Capa', 'Página interna', 'Verso / contracapa']
 const MIN_FOTOS = 3
@@ -39,7 +34,6 @@ export default function EditarLivroPage() {
   const [descricao, setDescricao] = useState('')
   const [categoriaNome, setCategoriaNome] = useState('')
   const [versao, setVersao] = useState('')
-  const [estado, setEstado] = useState<EstadoLivro>('BOM')
   const [notaEstado, setNotaEstado] = useState('')
   const [preco, setPreco] = useState('')
   const [aceitaTroca, setAceitaTroca] = useState(true)
@@ -74,8 +68,14 @@ export default function EditarLivroPage() {
       setDescricao(livro.descricao || '')
       setCategoriaNome((livro.categoria as any)?.nome || '')
       setVersao(livro.versao || '')
-      setEstado(livro.estado)
-      setNotaEstado(livro.nota_estado != null ? String(livro.nota_estado) : '')
+      // livros antigos podem ter nota_estado fracionada (ex: 2.5, do
+      // sistema legado de 4 estados) — arredondamos pro inteiro mais
+      // próximo porque o select agora só tem as 10 opções discretas
+      setNotaEstado(
+        livro.nota_estado != null
+          ? String(Math.min(10, Math.max(1, Math.round(livro.nota_estado))))
+          : ''
+      )
       setPreco(String(livro.preco))
       setAceitaTroca(livro.aceita_troca)
       setFotosExistentes(livro.fotos?.length ? livro.fotos : (livro.imagem_url ? [livro.imagem_url] : []))
@@ -124,8 +124,19 @@ export default function EditarLivroPage() {
   }
 
   const handleSalvar = async () => {
-    if (!titulo.trim() || !autor.trim() || !preco) {
-      setErro('Preencha título, autor e preço')
+    if (!titulo.trim() || !autor.trim()) {
+      setErro('Preencha título e autor')
+      return
+    }
+    if (!notaEstado) {
+      setErro('Selecione a classificação do livro')
+      return
+    }
+    const nota = Number(notaEstado)
+    const destinoDoacao = ehDoacao(nota)
+
+    if (!destinoDoacao && !preco) {
+      setErro('Preencha o preço de venda')
       return
     }
     if (!categoriaNome.trim()) {
@@ -177,6 +188,15 @@ export default function EditarLivroPage() {
 
       const todasFotos = [...fotosExistentes, ...urlsNovasFotos]
 
+      // ATENÇÃO — gap conhecido, não resolvido aqui: se este livro
+      // tiver uma solicitação de doação PENDENTE/ACEITA ou uma troca
+      // proposta em aberto, e o vendedor mudar a nota de forma que o
+      // destino mude (doação -> venda ou vice-versa), essa negociação
+      // em andamento fica "órfã" — ninguém cancela nem avisa as partes.
+      // Não implementei essa checagem agora por tempo; se isso vier a
+      // acontecer na prática, o próximo passo é bloquear a edição da
+      // nota enquanto houver negociação ativa pro livro, ou cancelar
+      // a negociação automaticamente e notificar o solicitante.
       const { error: updateErr } = await supabase
         .from('books')
         .update({
@@ -185,10 +205,11 @@ export default function EditarLivroPage() {
           descricao: descricao.trim() || null,
           categoria_id: categoriaId,
           versao: versao.trim() || null,
-          estado,
-          nota_estado: notaEstado ? Number(notaEstado) : null,
-          preco: Number(preco),
-          aceita_troca: aceitaTroca,
+          estado: estadoLegadoPorNota(nota),
+          nota_estado: nota,
+          classificacao: nivelPorNota(nota),
+          preco: destinoDoacao ? 0 : Number(preco),
+          aceita_troca: destinoDoacao ? true : aceitaTroca,
           imagem_url: todasFotos[0],
           fotos: todasFotos,
         })
@@ -360,30 +381,38 @@ export default function EditarLivroPage() {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="label">Estado de conservação *</label>
-            <select className="input" value={estado} onChange={e => setEstado(e.target.value as EstadoLivro)}>
-              {ESTADOS.map(e => (
-                <option key={e} value={e}>{LABEL_ESTADO[e]}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="label">Nota (0-10)</label>
-            <input
-              type="number"
-              className="input"
-              value={notaEstado}
-              onChange={e => setNotaEstado(e.target.value)}
-              min={0}
-              max={10}
-              step={0.5}
-            />
-          </div>
+        <div>
+          <label className="label">Classificação do livro *</label>
+          <select
+            className="input"
+            value={notaEstado}
+            onChange={e => setNotaEstado(e.target.value)}
+          >
+            <option value="" disabled>Selecione...</option>
+            {ESCALA_CLASSIFICACAO.map(nivel => (
+              <option key={nivel.valor} value={nivel.valor}>
+                {nivel.valor} — {nivel.label}
+              </option>
+            ))}
+          </select>
+          {notaEstado && (
+            <p className="text-xs text-gray-400 mt-1">
+              {ESCALA_CLASSIFICACAO.find(n => n.valor === Number(notaEstado))?.descricao}
+            </p>
+          )}
         </div>
 
+        {notaEstado && ehDoacao(Number(notaEstado)) && (
+          <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded-xl p-3">
+            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+            <p>
+              Com essa classificação, este livro será listado como <strong>Doação</strong> em vez de venda.
+              Ele não terá preço, e ficará disponível tanto para pedido gratuito quanto para troca.
+            </p>
+          </div>
+        )}
+
+        {!(notaEstado && ehDoacao(Number(notaEstado))) && (
         <div>
           <label className="label">Preço de venda (R$) *</label>
           <input
@@ -395,7 +424,9 @@ export default function EditarLivroPage() {
             step={0.01}
           />
         </div>
+        )}
 
+        {!(notaEstado && ehDoacao(Number(notaEstado))) ? (
         <label className="flex items-center gap-2 text-sm text-gray-600">
           <input
             type="checkbox"
@@ -405,6 +436,11 @@ export default function EditarLivroPage() {
           />
           Aceito trocas por este livro
         </label>
+        ) : (
+          <p className="text-xs text-gray-500 bg-verde-50 border border-verde-100 rounded-xl p-3">
+            Livro de doação sempre aceita troca — não é opcional.
+          </p>
+        )}
       </div>
 
       <button onClick={handleSalvar} className="btn-primary w-full mt-8 py-3">

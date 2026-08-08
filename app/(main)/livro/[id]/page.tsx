@@ -84,9 +84,15 @@ export default async function PaginaLivro({ params }: PageProps) {
             <p className="text-gray-400 text-sm mt-0.5">{livro.versao}</p>
           )}
 
-          {/* Preço — mostra desconto quando aplicável */}
+          {/* Preço — mostra desconto quando aplicável, ou badge de
+              doação (livro de doação não tem preço, preco=0 é só
+              um sentinela interno, nunca deveria aparecer pro usuário) */}
           <div className="mt-6">
-            {temDesconto ? (
+            {livro.destino === 'DOACAO' ? (
+              <div className="inline-flex items-center gap-1.5 bg-verde-100 text-verde-700 font-bold text-sm px-3 py-1.5 rounded-full">
+                Livro de doação — sem custo
+              </div>
+            ) : temDesconto ? (
               <div className="flex items-center gap-2 flex-wrap">
                 <p className="text-gray-400 text-lg line-through">{formatarMoeda(livro.preco)}</p>
                 <p className="text-verde-600 font-bold text-3xl">{formatarMoeda(livro.preco_final)}</p>
@@ -169,6 +175,7 @@ export default async function PaginaLivro({ params }: PageProps) {
                 userId={user?.id || null}
                 vendedorId={livro.vendedor_id}
                 quantidadeDisponivel={livro.quantidade_disponivel ?? 1}
+                destino={livro.destino}
               />
             )}
           </div>

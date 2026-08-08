@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     // Verificar que livros do solicitante pertencem a ele e aceitam troca
     const { data: livrosOferecidos, error: errLivros } = await supabase
       .from('books')
-      .select('id, preco, vendedor_id, vendido, aceita_troca')
+      .select('id, preco, nota_estado, destino, vendedor_id, vendido, aceita_troca')
       .in('id', livros_solicitante)
 
     if (errLivros || !livrosOferecidos) {
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     // Verificar que livros do receptor pertencem a ele e aceitam troca
     const { data: livrosDesejados } = await supabase
       .from('books')
-      .select('id, preco, vendedor_id, vendido, aceita_troca')
+      .select('id, preco, nota_estado, destino, vendedor_id, vendido, aceita_troca')
       .in('id', livros_receptor)
 
     const livrosReceptorInvalidos = (livrosDesejados || []).filter(
@@ -49,9 +49,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Livros do receptor inválidos para troca' }, { status: 400 })
     }
 
-    // Calcular valores totais
+    // Calcular valores totais em R$ — continua sendo calculado sempre,
+    // mesmo quando a troca envolve doação (fica no registro, só não
+    // é o valor "principal" mostrado na tela nesse caso)
     const valorSolicitante = livrosOferecidos.reduce((acc, l) => acc + Number(l.preco), 0)
     const valorReceptor = (livrosDesejados || []).reduce((acc, l) => acc + Number(l.preco), 0)
+
+    // Troca por doação: entra nessa modalidade quando pelo menos um
+    // item do lado RECEPTOR é destino=DOACAO. O lado ofertado pode
+    // ser qualquer livro (doação ou não) — só o lado recebido que
+    // precisa ter doação pra ativar a comparação por nota em vez de R$.
+    const envolveDoacao = (livrosDesejados || []).some(l => l.destino === 'DOACAO')
+
+    const avaliacaoTotalSolicitante = envolveDoacao
+      ? livrosOferecidos.reduce((acc, l) => acc + Number(l.nota_estado || 0), 0)
+      : null
+    const avaliacaoTotalReceptor = envolveDoacao
+      ? (livrosDesejados || []).reduce((acc, l) => acc + Number(l.nota_estado || 0), 0)
+      : null
 
     // Criar troca
     const { data: troca, error: errTroca } = await supabase
@@ -61,6 +76,9 @@ export async function POST(request: NextRequest) {
         receptor_id,
         valor_total_solicitante: valorSolicitante,
         valor_total_receptor: valorReceptor,
+        envolve_doacao: envolveDoacao,
+        avaliacao_total_solicitante: avaliacaoTotalSolicitante,
+        avaliacao_total_receptor: avaliacaoTotalReceptor,
         mensagem: mensagem || null,
       })
       .select()
@@ -132,10 +150,27 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ status: 'RECUSADA' })
     }
 
-    // ACEITAR: marcar livros como vendidos e criar order
+    // ACEITAR: reservar os livros de forma atômica antes de criar
+    // a order. Livro de doação pode ter sido reservado nesse meio
+    // tempo por um pedido de doação aceito (o outro caminho que
+    // compete pelo mesmo livro) — a RPC garante que isso não passa
+    // batido silenciosamente.
     const bookIds = (troca.troca_itens as Array<{ book_id: string }>).map(i => i.book_id)
 
-    await supabase.from('books').update({ vendido: true }).in('id', bookIds)
+    const { error: reservaError } = await supabase.rpc('reservar_livros', {
+      p_book_ids: bookIds,
+    })
+
+    if (reservaError) {
+      // A RPC levanta exceção quando algum livro já foi reservado
+      // por outra negociação (troca aceita antes, ou pedido de
+      // doação aceito antes) — nesse caso a troca não pode avançar.
+      await supabase.from('trocas').update({ status: 'RECUSADA' }).eq('id', troca_id)
+      return NextResponse.json(
+        { error: 'Um ou mais livros desta troca já foram reservados por outra negociação. A troca foi cancelada.' },
+        { status: 409 }
+      )
+    }
 
     const { data: order } = await supabase
       .from('orders')

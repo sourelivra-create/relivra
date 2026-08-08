@@ -29,6 +29,18 @@ export const metadata: Metadata = {
     description: 'Dê uma nova vida aos seus livros',
     type: 'website',
   },
+  // PWA — Android usa o manifest.ts (app/manifest.ts) automaticamente.
+  // iOS/Safari ignora boa parte do manifest e depende dessas meta tags
+  // específicas pra "Adicionar à Tela de Início" funcionar direito.
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Relivra',
+  },
+}
+
+export const viewport = {
+  themeColor: '#2D6A4F',
 }
 
 export default function RootLayout({

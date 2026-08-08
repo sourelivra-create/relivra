@@ -10,28 +10,14 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { cn, formatarMoeda } from '@/lib/utils'
 import { calcularPrecoFinal, recalcularPrecosPorNota } from '@/lib/preco/calcular'
+import { ESCALA_CLASSIFICACAO, nivelPorNota, ehDoacao, estadoLegadoPorNota } from '@/lib/classificacao/escala'
 import CompletarPerfil from './CompletarPerfil'
-import type { EstadoLivro } from '@/types/database.types'
 
 type Etapa = 'carregando' | 'completar_perfil' | 'formulario' | 'publicando' | 'sucesso'
-
-const ESTADOS: EstadoLivro[] = ['OTIMO', 'BOM', 'REGULAR', 'RUIM']
-const LABEL_ESTADO: Record<EstadoLivro, string> = {
-  OTIMO: 'Ótimo', BOM: 'Bom', REGULAR: 'Regular', RUIM: 'Ruim'
-}
 
 const LABELS_FOTO = ['Capa', 'Página interna', 'Verso / contracapa']
 const MIN_FOTOS = 3
 const MAX_FOTOS = 6
-
-// Nota padrão para recalcular preço quando o vendedor muda o estado
-// mas não digitou uma nota numérica específica
-function notaPorEstado(estado: EstadoLivro): number {
-  const notas: Record<EstadoLivro, number> = {
-    OTIMO: 9, BOM: 7, REGULAR: 5, RUIM: 2.5,
-  }
-  return notas[estado]
-}
 
 export default function VenderPage() {
   const router = useRouter()
@@ -49,7 +35,6 @@ export default function VenderPage() {
   const [descricao, setDescricao] = useState('')
   const [categoriaNome, setCategoriaNome] = useState('')
   const [versao, setVersao] = useState('')
-  const [estado, setEstado] = useState<EstadoLivro>('BOM')
   const [notaEstado, setNotaEstado] = useState('')
   const [preco, setPreco] = useState('')
   const [quantidade, setQuantidade] = useState('1')
@@ -107,7 +92,10 @@ export default function VenderPage() {
   useEffect(() => {
     if (!jaAnalisou || !precoMercadoReferencia) return
 
-    const nota = notaEstado ? Number(notaEstado) : notaPorEstado(estado)
+    // notaEstado agora vem sempre de um <select> com valores 1-10 —
+    // não deveria ficar vazio depois que a IA analisa, mas mantemos
+    // um fallback neutro (5) por segurança
+    const nota = notaEstado ? Number(notaEstado) : 5
     const novosPrecos = recalcularPrecosPorNota(precoMercadoReferencia, nota)
 
     setPrecosSugeridos({
@@ -115,7 +103,7 @@ export default function VenderPage() {
       rapida: novosPrecos.vendaRapida,
       maximo: novosPrecos.maximo,
     })
-  }, [notaEstado, estado, precoMercadoReferencia, jaAnalisou])
+  }, [notaEstado, precoMercadoReferencia, jaAnalisou])
 
   const handleAdicionarFotos = (files: FileList) => {
     const novasFotos = Array.from(files).slice(0, MAX_FOTOS - fotos.length)
@@ -181,8 +169,12 @@ export default function VenderPage() {
       setAutor(resultado.autor || '')
       setCategoriaNome(resultado.categoria || '')
       setVersao(resultado.edicao || '')
-      setEstado(resultado.estado || 'BOM')
-      setNotaEstado(resultado.nota ? String(resultado.nota) : '')
+      // A nota da IA pode vir fracionada (ex: 8.3) — arredondamos pro
+      // inteiro mais próximo porque o select agora só oferece as 10
+      // opções discretas da escala nova (1-10), sem meio-termo.
+      setNotaEstado(
+        resultado.nota ? String(Math.min(10, Math.max(1, Math.round(resultado.nota)))) : ''
+      )
       setDescricao(resultado.descricao || '')
       setPreco(resultado.preco_sugerido ? String(resultado.preco_sugerido) : '')
 
@@ -234,8 +226,21 @@ export default function VenderPage() {
   }
 
   const handlePublicar = async () => {
-    if (!titulo.trim() || !autor.trim() || !preco) {
-      setErro('Preencha título, autor e preço')
+    if (!titulo.trim() || !autor.trim()) {
+      setErro('Preencha título e autor')
+      return
+    }
+    if (!notaEstado) {
+      setErro('Selecione a classificação do livro')
+      return
+    }
+    const nota = Number(notaEstado)
+    const destinoDoacao = ehDoacao(nota)
+
+    // Preço só é obrigatório para livros que vão à venda — doação
+    // (nota ≤ 4) não tem preço, o campo fica escondido no formulário
+    if (!destinoDoacao && !preco) {
+      setErro('Preencha o preço de venda')
       return
     }
     if (!categoriaNome.trim()) {
@@ -299,10 +304,26 @@ export default function VenderPage() {
           descricao: descricao.trim() || null,
           categoria_id: categoriaId,
           versao: versao.trim() || null,
-          estado,
-          nota_estado: notaEstado ? Number(notaEstado) : null,
-          preco: Number(preco),
-          aceita_troca: aceitaTroca,
+          // "estado" (enum antigo, 4 valores) mantido só por
+          // compatibilidade — derivado da nota nova, não editável
+          // diretamente no formulário
+          estado: estadoLegadoPorNota(nota),
+          nota_estado: nota,
+          // "classificacao" também é preenchida aqui, embora o
+          // trigger do banco (migration 010) recalcule o mesmo valor
+          // de qualquer forma — redundância proposital, não custa nada
+          classificacao: nivelPorNota(nota),
+          // Livro de doação não tem preço de venda — o banco ainda
+          // exige a coluna NOT NULL, então usamos 0 como sentinela.
+          // A UI nunca deixa o comprador ver esse "preço" porque a
+          // página de doações não usa esse campo pra nada.
+          preco: destinoDoacao ? 0 : Number(preco),
+          // Livro de doação entra AUTOMATICAMENTE disponível para
+          // troca — é o mecanismo de "troca por doação": quem quer
+          // um livro de doação pode oferecer outro livro em vez de
+          // só pedir de graça. Não é opcional pelo vendedor, por
+          // isso ignoramos o toggle "aceitaTroca" aqui.
+          aceita_troca: destinoDoacao ? true : aceitaTroca,
           imagem_url: urlsFotos[0], // capa, mantido por compatibilidade
           fotos: urlsFotos,
           quantidade_total: Math.max(1, Number(quantidade) || 1),
@@ -534,28 +555,26 @@ export default function VenderPage() {
           />
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="label">Estado de conservação *</label>
-            <select className="input" value={estado} onChange={e => setEstado(e.target.value as EstadoLivro)}>
-              {ESTADOS.map(e => (
-                <option key={e} value={e}>{LABEL_ESTADO[e]}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="label">Nota do estado (0-10)</label>
-            <input
-              type="number"
+            <label className="label">Classificação do livro *</label>
+            <select
               className="input"
               value={notaEstado}
               onChange={e => setNotaEstado(e.target.value)}
-              placeholder="Ex: 8"
-              min={0}
-              max={10}
-              step={0.5}
-            />
+            >
+              <option value="" disabled>Selecione...</option>
+              {ESCALA_CLASSIFICACAO.map(nivel => (
+                <option key={nivel.valor} value={nivel.valor}>
+                  {nivel.valor} — {nivel.label}
+                </option>
+              ))}
+            </select>
+            {notaEstado && (
+              <p className="text-xs text-gray-400 mt-1">
+                {ESCALA_CLASSIFICACAO.find(n => n.valor === Number(notaEstado))?.descricao}
+              </p>
+            )}
           </div>
 
           <div>
@@ -571,6 +590,21 @@ export default function VenderPage() {
           </div>
         </div>
 
+        {/* Aviso de doação — livros nota ≤ 4 não são vendidos, vão
+            automaticamente para a página de Doações Literárias e
+            ficam disponíveis também para troca (alguém pode oferecer
+            outro livro em vez de só pedir de graça) */}
+        {notaEstado && ehDoacao(Number(notaEstado)) && (
+          <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-300 rounded-xl p-3">
+            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+            <p>
+              Com essa classificação, este livro será listado como <strong>Doação</strong> em vez de venda.
+              Ele não terá preço, mas ficará disponível tanto para pedido gratuito quanto para
+              troca — outro usuário pode oferecer um livro dele em vez de só pedir de graça.
+            </p>
+          </div>
+        )}
+
         <div className="flex items-start gap-2 text-xs text-gray-500 bg-areia-50 rounded-xl p-3 border border-areia-200">
           <AlertCircle size={14} className="mt-0.5 shrink-0" />
           <p>
@@ -579,6 +613,8 @@ export default function VenderPage() {
           </p>
         </div>
 
+        {/* Preço só aparece para livros que vão à venda — doação não tem preço */}
+        {!(notaEstado && ehDoacao(Number(notaEstado))) && (
         <div>
           <label className="label">Por quanto você quer vender (R$) *</label>
 
@@ -651,7 +687,9 @@ export default function VenderPage() {
             </div>
           )}
         </div>
+        )}
 
+        {!(notaEstado && ehDoacao(Number(notaEstado))) ? (
         <label className="flex items-center gap-3 cursor-pointer p-4 bg-verde-50 rounded-xl border border-verde-100">
           <div
             className={cn(
@@ -670,6 +708,20 @@ export default function VenderPage() {
             <p className="text-xs text-gray-500">Outros usuários poderão propor troca pelo seu livro</p>
           </div>
         </label>
+        ) : (
+          // Doação sempre aceita troca — não é opcional aqui, então
+          // mostramos como informação, não como toggle que engana o
+          // vendedor achando que pode desligar
+          <div className="flex items-center gap-3 p-4 bg-verde-50 rounded-xl border border-verde-100">
+            <div className="relative w-10 h-6 rounded-full bg-verde-500 shrink-0 opacity-60">
+              <div className="absolute top-1 translate-x-5 w-4 h-4 bg-white rounded-full shadow" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Aceita trocas (automático para doação)</p>
+              <p className="text-xs text-gray-500">Livros de doação sempre podem ser trocados por outro livro</p>
+            </div>
+          </div>
+        )}
       </div>
 
       <button

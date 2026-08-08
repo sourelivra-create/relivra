@@ -24,6 +24,12 @@ async function ListaLivros({ searchParams }: HomeProps) {
     .from('books')
     .select('*, vendedor:profiles(id, nome), categoria:categorias(id, nome)')
     .eq('vendido', false)
+    // Livro de doação (destino=DOACAO) nunca aparece na home normal —
+    // ele mora em /doacoes. Sem esse filtro, qualquer livro nota ≤4
+    // aparecia misturado com preco=0 na listagem de venda, o que é
+    // um bug visível (livro "grátis" na home) e nunca tinha sido
+    // implementado apesar de estar no roteiro original do projeto.
+    .eq('destino', 'VENDA')
     .order('created_at', { ascending: false })
     .limit(60)
 

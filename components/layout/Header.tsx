@@ -40,6 +40,7 @@ export default function Header() {
       .from('books')
       .select('categoria:categorias(id, nome)')
       .eq('vendido', false)
+      .eq('destino', 'VENDA')
       .then(({ data }) => {
         const vistos = new Map<string, CategoriaResumo>()
         for (const item of data || []) {
@@ -69,6 +70,7 @@ export default function Header() {
   }
 
   const navLinks = [
+    { href: '/doacoes', label: 'Doação' },
     { href: '/promocoes', label: 'Promoções' },
     { href: '/mais-vistos', label: 'Mais vistos' },
     { href: '/como-funciona', label: 'Como funciona' },

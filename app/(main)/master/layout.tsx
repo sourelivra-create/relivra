@@ -1,12 +1,13 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { LayoutDashboard, Receipt, Users } from 'lucide-react'
+import { LayoutDashboard, Receipt, Users, UserCog } from 'lucide-react'
 
 const tabs = [
   { href: '/master',             label: 'Visão geral',  icon: LayoutDashboard },
   { href: '/master/transacoes',  label: 'Transações',   icon: Receipt },
   { href: '/master/vendedores',  label: 'Vendedores',   icon: Users },
+  { href: '/master/usuarios',    label: 'Usuários',     icon: UserCog },
 ]
 
 export default async function MasterLayout({

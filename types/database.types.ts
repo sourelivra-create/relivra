@@ -17,6 +17,24 @@ export type StatusTroca = 'PENDENTE' | 'ACEITA' | 'RECUSADA' | 'FINALIZADA' | 'C
 export type StatusTransaction = 'PENDENTE' | 'PAGO' | 'ESTORNADO'
 export type TipoTransaction = 'VENDA' | 'CREDITO' | 'DEBITO' | 'TROCA'
 
+// Migration 009 — escala de classificação 1-10 (substitui, na prática,
+// a granularidade de EstadoLivro para fins de exibição/formulário,
+// mas EstadoLivro é mantido em paralelo por compatibilidade)
+export type ClassificacaoLivro =
+  | 'EXCELENTE'   // 10
+  | 'NOVO'        // 9
+  | 'OTIMO'       // 8
+  | 'MUITO_BOM'   // 7
+  | 'BOM'         // 6
+  | 'REGULAR'     // 5
+  | 'RUIM'        // 4
+  | 'MUITO_RUIM'  // 3
+  | 'PESSIMO'     // 2
+  | 'INUTILIZAVEL' // 1
+
+export type DestinoLivro = 'VENDA' | 'DOACAO'
+export type StatusSolicitacaoDoacao = 'PENDENTE' | 'ACEITA' | 'RECUSADA' | 'CONCLUIDA' | 'CANCELADA'
+
 // Categorias agora são dinâmicas — a IA pode criar novas conforme
 // identifica livros que não se encaixam nas existentes.
 export interface Categoria {
@@ -32,7 +50,16 @@ export interface Profile {
   nome: string
   avatar_url: string | null
   saldo: number
+  saldo_pontos: number
   rating: number
+  is_admin: boolean
+  cep: string | null
+  endereco: string | null
+  bairro: string | null
+  cidade: string | null
+  estado_uf: string | null
+  chave_pix: string | null
+  tipo_chave_pix: string | null
   created_at: string
 }
 
@@ -47,8 +74,10 @@ export interface Book {
   descricao: string | null
   categoria_id: string
   versao: string | null             // ex: "2ª edição, 2020"
-  estado: EstadoLivro                // declarado pelo VENDEDOR (manual)
-  nota_estado: number | null         // nota do VENDEDOR (manual)
+  estado: EstadoLivro                // declarado pelo VENDEDOR (manual) — mantido por compatibilidade
+  nota_estado: number | null         // nota do VENDEDOR (manual), 0-10
+  classificacao: ClassificacaoLivro  // derivada automaticamente de nota_estado via trigger (migration 010)
+  destino: DestinoLivro              // derivado automaticamente de nota_estado via trigger — VENDA ou DOACAO
   preco: number
   preco_sugerido: number | null
   tipo_desconto: TipoDesconto | null
@@ -117,6 +146,12 @@ export interface Troca {
   valor_total_solicitante: number
   valor_total_receptor: number
   diferenca_valor: number
+  // Troca por doação — só preenchidos quando envolve_doacao = true.
+  // Nesse caso, a comparação principal usa nota (1-10) em vez de R$,
+  // porque livro de doação tem preco = 0.
+  envolve_doacao: boolean
+  avaliacao_total_solicitante: number | null
+  avaliacao_total_receptor: number | null
   order_id: string | null
   mensagem: string | null
   created_at: string
@@ -137,6 +172,29 @@ export interface TrocaItem {
   dono?: Profile
 }
 
+export interface Conversa {
+  id: string
+  book_id: string
+  comprador_id: string
+  vendedor_id: string
+  created_at: string
+  ultima_mensagem_em: string
+  // Join
+  book?: Book
+  comprador?: Profile
+  vendedor?: Profile
+  mensagens?: Mensagem[]
+}
+
+export interface Mensagem {
+  id: string
+  conversa_id: string
+  remetente_id: string
+  texto: string
+  created_at: string
+  lida_em: string | null
+}
+
 export interface Transaction {
   id: string
   vendedor_id: string
@@ -145,6 +203,29 @@ export interface Transaction {
   tipo: TipoTransaction
   status: StatusTransaction
   descricao: string | null
+  created_at: string
+}
+
+export interface SolicitacaoDoacao {
+  id: string
+  book_id: string
+  solicitante_id: string
+  status: StatusSolicitacaoDoacao
+  mensagem: string | null
+  created_at: string
+  // Join
+  book?: Book
+  solicitante?: Profile
+}
+
+export interface PontosHistorico {
+  id: string
+  vendedor_id: string
+  order_id: string | null
+  book_id: string | null
+  valor_venda: number
+  bonus_qualidade: number
+  pontos_ganhos: number
   created_at: string
 }
 
