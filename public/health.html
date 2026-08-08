@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow">
+<title>Health Check</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f4f4f4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 32px 40px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    text-align: center;
+    min-width: 280px;
+  }
+  .status {
+    font-size: 22px;
+    font-weight: 700;
+    padding: 10px 20px;
+    border-radius: 10px;
+    margin-bottom: 16px;
+    display: inline-block;
+  }
+  .ok    { background: #e6f7ec; color: #1a7f3c; }
+  .erro  { background: #fdecea; color: #b3261e; }
+  .checando { background: #eee; color: #666; }
+  .detalhe { color: #666; font-size: 13px; margin-top: 8px; line-height: 1.5; }
+  .timestamp { color: #999; font-size: 12px; margin-top: 16px; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div id="status" class="status checando">Verificando...</div>
+  <div id="detalhe" class="detalhe"></div>
+  <div id="timestamp" class="timestamp"></div>
+</div>
+
+<script>
+  // ============================================================
+  // SUBSTITUA os 2 primeiros valores antes de subir pro Netlify.
+  // TABELA já vem preenchida com "categorias" — é a única tabela do
+  // Relivra com RLS de leitura pública confirmada (policy "Categorias
+  // públicas para leitura", USING true), então o ping sempre funciona
+  // sem precisar de login nem de saber um ID específico que exista.
+  // ============================================================
+  const SUPABASE_URL = 'https://dtxtnvdoqxmmsozyjwiv.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR0eHRudmRvcXhtbXNvenlqd2l2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NDU2MDcsImV4cCI6MjA5NzEyMTYwN30.FwBh4Q83T4Rily726Eagv82YoGHJMCk4O0ERfUvLE5o';
+  const TABELA = 'categorias';
+  // ============================================================
+
+  const elStatus = document.getElementById('status');
+  const elDetalhe = document.getElementById('detalhe');
+  const elTimestamp = document.getElementById('timestamp');
+
+  function agora() {
+    return new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+  }
+
+  async function verificar() {
+    elTimestamp.textContent = 'Última verificação: ' + agora();
+
+    try {
+      const url = `${SUPABASE_URL}/rest/v1/${TABELA}?select=id&limit=1`;
+
+      const resposta = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+      });
+
+      if (!resposta.ok) {
+        throw new Error(`HTTP ${resposta.status}`);
+      }
+
+      const dados = await resposta.json();
+
+      elStatus.textContent = 'OK';
+      elStatus.className = 'status ok';
+      elDetalhe.textContent = `Supabase respondeu normalmente (${dados.length} registro(s) encontrado(s))`;
+    } catch (erro) {
+      elStatus.textContent = 'ERRO';
+      elStatus.className = 'status erro';
+      elDetalhe.textContent = 'Falha ao consultar o Supabase: ' + erro.message;
+    }
+  }
+
+  verificar();
+</script>
+
+</body>
+</html>
