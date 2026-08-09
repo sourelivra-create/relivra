@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import MercadoPagoConfig, { Payment } from 'mercadopago'
+import { verificarAssinaturaMP } from '@/lib/pagamento/verificar-assinatura'
 
 const mp = new MercadoPagoConfig({
   accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN!,
@@ -17,6 +18,19 @@ export async function POST(request: NextRequest) {
 
     const paymentId = body.data?.id
     if (!paymentId) return NextResponse.json({ ok: true })
+
+    // Confirma que essa notificação realmente veio do Mercado Pago
+    // antes de processar qualquer coisa — sem isso, qualquer pessoa
+    // na internet pode chamar essa rota direto.
+    const assinaturaValida = verificarAssinaturaMP(
+      request.headers.get('x-signature'),
+      request.headers.get('x-request-id'),
+      String(paymentId)
+    )
+    if (!assinaturaValida) {
+      console.warn('[Webhook MP] Assinatura inválida ou ausente — requisição rejeitada')
+      return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 })
+    }
 
     const supabase = createAdminClient()
     const payment  = new Payment(mp)
@@ -41,9 +55,25 @@ export async function POST(request: NextRequest) {
         .eq('order_id', orderId)
 
       if (items?.length) {
+        // 3. Decrementar o estoque de cada livro pela quantidade
+        // comprada — o trigger do banco sincroniza automaticamente
+        // o campo "vendido" quando quantidade_disponivel chega a 0.
+        // Usamos uma function RPC para fazer o decremento de forma
+        // atômica (evita corrida se duas compras chegarem juntas).
+        for (const item of items) {
+          await supabase.rpc('decrementar_estoque_livro', {
+            p_book_id: item.book_id,
+            p_quantidade: item.quantidade || 1,
+          })
+        }
+
         const bookIds = items.map(i => i.book_id)
         const quantidadePorLivro = new Map(items.map(i => [i.book_id, i.quantidade || 1]))
 
+        // 4. Criar entrada no ledger financeiro — uma por livro/vendedor.
+        // Usa mp_payment_id como chave de idempotência: se o webhook for
+        // chamado de novo para o mesmo pagamento (comum no MP), o UNIQUE
+        // da coluna impede duplicar a entrada financeira.
         const { data: books } = await supabase
           .from('books')
           .select('id, preco_final, vendedor_id, titulo')
@@ -87,15 +117,9 @@ export async function POST(request: NextRequest) {
             const valorLiquido = Number((valorBrutoTotal - taxaMpRateada - taxaRelivra).toFixed(2))
 
             // Chave de idempotência composta: mesmo pagamento + mesmo
-            // livro nunca gera duas entradas, graças ao UNIQUE em
-            // mp_payment_id. CRÍTICO: usamos essa mesma tentativa de
-            // insert como o portão de idempotência para TUDO que é
-            // efeito colateral desta venda (estoque, pontos, etc.) —
-            // só decrementamos estoque se a entrada for realmente NOVA.
-            // Sem isso, um reenvio de webhook do MP (comum em timeout)
-            // decrementaria o estoque de novo mesmo com a ledger protegida,
-            // porque antes o decremento rodava solto, sem checar duplicidade.
-            const { error: ledgerError } = await supabase
+            // livro nunca gera duas entradas (insert simplesmente falha
+            // silenciosamente na segunda tentativa, graças ao UNIQUE)
+            await supabase
               .from('ledger_financeiro')
               .insert({
                 order_id: orderId,
@@ -108,29 +132,13 @@ export async function POST(request: NextRequest) {
                 mp_payment_id: `${paymentId}_${book.id}`,
                 status: 'PENDENTE',
               })
-
-            const eraDuplicado = ledgerError?.code === '23505' // unique_violation
-
-            if (ledgerError && !eraDuplicado) {
-              // Erro real (não é duplicidade esperada) — loga e pula
-              // o decremento deste item para não arriscar estoque errado
-              // por um erro que não entendemos ainda.
-              console.error('[Ledger insert]', ledgerError)
-              continue
-            }
-
-            if (eraDuplicado) {
-              // Este webhook já foi processado para este livro antes.
-              // Não decrementa estoque de novo, não insere pontos de novo.
-              continue
-            }
-
-            // Só chega aqui se a entrada na ledger foi criada AGORA,
-            // pela primeira vez — então é seguro decrementar o estoque.
-            await supabase.rpc('decrementar_estoque_livro', {
-              p_book_id: book.id,
-              p_quantidade: quantidadeComprada,
-            })
+              .select()
+              // Erro de UNIQUE violado é esperado em retries — ignora
+              .then(({ error }) => {
+                if (error && !error.message.includes('duplicate')) {
+                  console.error('[Ledger insert]', error)
+                }
+              })
           }
         }
       }

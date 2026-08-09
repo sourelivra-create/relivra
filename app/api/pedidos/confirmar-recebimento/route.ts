@@ -13,8 +13,24 @@ export async function POST(request: NextRequest) {
 
     const { order_id, vendedor_id, foto_url, nota, comentario } = await request.json()
 
-    if (!order_id || !foto_url || !nota) {
+    if (!order_id || !foto_url || nota == null) {
       return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 })
+    }
+
+    // Nota precisa ser um número real entre 1 e 5 — sem essa checagem,
+    // um valor como -99999 ou "abc" (que vira NaN) corrompia a nota
+    // pública do vendedor permanentemente na média calculada abaixo
+    const notaNumerica = Number(nota)
+    if (!Number.isFinite(notaNumerica) || notaNumerica < 1 || notaNumerica > 5) {
+      return NextResponse.json({ error: 'Nota inválida — deve ser entre 1 e 5' }, { status: 400 })
+    }
+
+    // foto_url precisa apontar pro nosso próprio bucket de confirmações
+    // — sem essa checagem, qualquer string passava, inclusive link
+    // pra fora do nosso storage
+    const urlEsperada = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/confirmacoes-entrega/`
+    if (!foto_url.startsWith(urlEsperada)) {
+      return NextResponse.json({ error: 'Foto inválida' }, { status: 400 })
     }
 
     // Confirma que essa order pertence ao usuário logado (só o
@@ -68,7 +84,7 @@ export async function POST(request: NextRequest) {
       if (vendedor) {
         // Média simples entre o rating atual e a nova nota — uma
         // melhoria futura seria guardar todas as notas individualmente
-        const novaMedia = Number(((Number(vendedor.rating) + nota) / 2).toFixed(1))
+        const novaMedia = Number(((Number(vendedor.rating) + notaNumerica) / 2).toFixed(1))
         await admin
           .from('profiles')
           .update({ rating: novaMedia })

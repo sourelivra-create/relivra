@@ -42,3 +42,6 @@ Thumbs.db
 *.log
 .vercel
 coverage/
+
+# Sentry Config File
+.env.sentry-build-plugin

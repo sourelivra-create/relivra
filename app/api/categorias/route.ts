@@ -17,6 +17,9 @@ export async function POST(request: NextRequest) {
     if (!nome || typeof nome !== 'string' || !nome.trim()) {
       return NextResponse.json({ error: 'Nome da categoria é obrigatório' }, { status: 400 })
     }
+    if (nome.trim().length > 60) {
+      return NextResponse.json({ error: 'Nome da categoria muito longo (máx 60 caracteres)' }, { status: 400 })
+    }
 
     const categoria = await resolverCategoria(nome.trim())
 

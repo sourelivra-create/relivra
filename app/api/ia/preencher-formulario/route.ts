@@ -1,15 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { preencherFormularioComIA } from '@/lib/ia/preencher-formulario'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 
 const TIPOS_ACEITOS = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_TAMANHO = 5 * 1024 * 1024
+const LIMITE_POR_HORA = 15 // ajuste conforme o volume real de vendedores
 
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+
+    // Rate limit — sem isso, uma conta grátis conseguia chamar o
+    // Gemini em loop sem parar, e cada chamada custa dinheiro real
+    const admin = createAdminClient()
+    const umaHoraAtras = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+
+    const { count } = await admin
+      .from('ia_uso_log')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .gte('created_at', umaHoraAtras)
+
+    if ((count || 0) >= LIMITE_POR_HORA) {
+      return NextResponse.json(
+        { error: 'Limite de análises por hora atingido. Tente novamente mais tarde.' },
+        { status: 429 }
+      )
+    }
+
+    await admin.from('ia_uso_log').insert({ user_id: user.id })
 
     const formData = await request.formData()
     const arquivos = formData.getAll('fotos') as File[]
