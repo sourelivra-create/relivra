@@ -24,12 +24,6 @@ async function ListaLivros({ searchParams }: HomeProps) {
     .from('books')
     .select('*, vendedor:profiles(id, nome), categoria:categorias(id, nome)')
     .eq('vendido', false)
-    // Livro de doação (destino=DOACAO) nunca aparece na home normal —
-    // ele mora em /doacoes. Sem esse filtro, qualquer livro nota ≤4
-    // aparecia misturado com preco=0 na listagem de venda, o que é
-    // um bug visível (livro "grátis" na home) e nunca tinha sido
-    // implementado apesar de estar no roteiro original do projeto.
-    .eq('destino', 'VENDA')
     .order('created_at', { ascending: false })
     .limit(60)
 
@@ -69,7 +63,7 @@ async function ListaLivros({ searchParams }: HomeProps) {
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 md:gap-3">
       {livros.map((livro) => (
         <BookCard key={livro.id} livro={livro} />
       ))}
@@ -79,7 +73,7 @@ async function ListaLivros({ searchParams }: HomeProps) {
 
 function SkeletonGrid() {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 md:gap-3">
       {Array.from({ length: 10 }).map((_, i) => (
         <BookCardSkeleton key={i} />
       ))}

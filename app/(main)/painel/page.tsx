@@ -2,10 +2,13 @@ import { createClient } from '@/lib/supabase/server'
 import Link from 'next/link'
 import { formatarMoeda, formatarData } from '@/lib/utils'
 import { BookOpen, ArrowLeftRight, ShoppingBag, Plus, TrendingUp, Clock } from 'lucide-react'
+import BannerDisponibilidade from './BannerDisponibilidade'
 
 export default async function PainelPage() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
+
+  const trintaDiasAtras = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
 
   // Buscar dados em paralelo
   const [
@@ -15,6 +18,7 @@ export default async function PainelPage() {
     { data: ultimosLivros },
     { data: ultimasTrocas },
     { data: transacoes },
+    { data: livrosParaLembrete },
   ] = await Promise.all([
     supabase.from('books').select('*', { count: 'exact', head: true })
       .eq('vendedor_id', user!.id).eq('vendido', false),
@@ -41,6 +45,14 @@ export default async function PainelPage() {
       .eq('status', 'PAGO')
       .order('created_at', { ascending: false })
       .limit(5),
+
+    // Livros parados há 30+ dias, cujo lembrete nunca foi confirmado
+    // ou foi confirmado há mais de 30 dias também (não repete toda hora)
+    supabase.from('books').select('id, titulo')
+      .eq('vendedor_id', user!.id)
+      .eq('vendido', false)
+      .lt('created_at', trintaDiasAtras)
+      .or(`lembrete_disponibilidade_em.is.null,lembrete_disponibilidade_em.lt.${trintaDiasAtras}`),
   ])
 
   const totalGanho = (transacoes || []).reduce((acc, t) => acc + Number(t.valor), 0)
@@ -86,6 +98,10 @@ export default async function PainelPage() {
 
   return (
     <div className="space-y-6">
+      {livrosParaLembrete && livrosParaLembrete.length > 0 && (
+        <BannerDisponibilidade livros={livrosParaLembrete} />
+      )}
+
       {/* Cards de resumo */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {cards.map(card => (

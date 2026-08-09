@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { ArrowLeftRight, BookOpen, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { ArrowLeftRight, BookOpen, Loader2, AlertCircle, CheckCircle2, Plus, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatarMoeda } from '@/lib/utils'
 import { corEstado, labelEstado } from '@/lib/preco/calcular'
@@ -18,7 +18,13 @@ export default function TrocarPage() {
   const livroDesejadoId = searchParams.get('livro') || ''
   const receptorId = searchParams.get('receptor') || ''
 
-  const [livroDesejado, setLivroDesejado] = useState<Book | null>(null)
+  // livrosDesejados agora é uma lista — o livro que trouxe a pessoa
+  // pra essa tela fica sempre incluído (não dá pra tirar), e se for
+  // doação, ela pode ADICIONAR outros livros de doação do mesmo
+  // vendedor na mesma proposta (o "pega 2 nota 4 com 1 nota 8")
+  const [livroInicial, setLivroInicial] = useState<Book | null>(null)
+  const [outrasDoacoesDisponiveis, setOutrasDoacoesDisponiveis] = useState<Book[]>([])
+  const [livrosDesejadosSelecionados, setLivrosDesejadosSelecionados] = useState<string[]>([])
   const [meusLivros, setMeusLivros] = useState<Book[]>([])
   const [selecionados, setSelecionados] = useState<string[]>([])
   const [mensagem, setMensagem] = useState('')
@@ -32,16 +38,30 @@ export default function TrocarPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login'); return }
 
-      // Buscar livro desejado
       const { data: livro } = await supabase
         .from('books')
         .select('*')
         .eq('id', livroDesejadoId)
         .single()
 
-      setLivroDesejado(livro)
+      setLivroInicial(livro)
+      if (livro) setLivrosDesejadosSelecionados([livro.id])
 
-      // Buscar meus livros disponíveis para troca
+      // Se o livro que trouxe a pessoa aqui é doação, busca outros
+      // livros de doação DO MESMO VENDEDOR pra oferecer como opção
+      // de adicionar na mesma proposta
+      if (livro?.destino === 'DOACAO') {
+        const { data: outrasDoacoes } = await supabase
+          .from('books')
+          .select('*')
+          .eq('vendedor_id', receptorId)
+          .eq('destino', 'DOACAO')
+          .eq('vendido', false)
+          .neq('id', livro.id)
+
+        setOutrasDoacoesDisponiveis(outrasDoacoes || [])
+      }
+
       const { data: livros } = await supabase
         .from('books')
         .select('*')
@@ -61,12 +81,38 @@ export default function TrocarPage() {
     )
   }
 
+  const toggleDesejado = (id: string) => {
+    // O livro inicial nunca sai da lista — só os adicionais
+    if (id === livroInicial?.id) return
+    setLivrosDesejadosSelecionados(prev =>
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    )
+  }
+
+  const todosLivrosDesejadosDisponiveis = livroInicial
+    ? [livroInicial, ...outrasDoacoesDisponiveis]
+    : []
+
+  const livrosDesejadosObjetos = todosLivrosDesejadosDisponiveis.filter(
+    l => livrosDesejadosSelecionados.includes(l.id)
+  )
+
+  // Troca por doação usa NOTA como valor comparado, não R$ — só
+  // quando pelo menos um item do lado desejado é DOACAO (mesma regra
+  // que o servidor usa em POST /api/trocas, pra tela e backend nunca
+  // mostrarem números diferentes um do outro)
+  const envolveDoacao = livrosDesejadosObjetos.some(l => l.destino === 'DOACAO')
+
   const valorSolicitante = meusLivros
     .filter(l => selecionados.includes(l.id))
     .reduce((acc, l) => acc + Number(l.preco), 0)
-
-  const valorReceptor = livroDesejado ? Number(livroDesejado.preco) : 0
+  const valorReceptor = livrosDesejadosObjetos.reduce((acc, l) => acc + Number(l.preco), 0)
   const diferenca = valorSolicitante - valorReceptor
+
+  const notaSolicitante = meusLivros
+    .filter(l => selecionados.includes(l.id))
+    .reduce((acc, l) => acc + Number(l.nota_estado || 0), 0)
+  const notaReceptor = livrosDesejadosObjetos.reduce((acc, l) => acc + Number(l.nota_estado || 0), 0)
 
   const handleProporTroca = async () => {
     if (!selecionados.length) {
@@ -84,7 +130,7 @@ export default function TrocarPage() {
         body: JSON.stringify({
           receptor_id: receptorId,
           livros_solicitante: selecionados,
-          livros_receptor: [livroDesejadoId],
+          livros_receptor: livrosDesejadosSelecionados,
           mensagem: mensagem.trim() || null,
         }),
       })
@@ -131,29 +177,70 @@ export default function TrocarPage() {
         <p className="text-gray-500 text-sm mt-1">Selecione os livros que deseja oferecer</p>
       </div>
 
-      {/* Livro desejado */}
-      {livroDesejado && (
+      {/* Livro(s) desejados */}
+      {livroInicial && (
         <div className="mb-6">
-          <p className="label mb-2">Livro que você quer</p>
-          <div className="flex items-center gap-3 p-4 bg-areia-50 rounded-2xl border border-areia-200">
-            <div className="relative w-12 h-16 rounded-lg overflow-hidden shrink-0 bg-areia-200">
-              {livroDesejado.imagem_url ? (
-                <Image src={livroDesejado.imagem_url} alt={livroDesejado.titulo} fill className="object-cover" />
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <BookOpen size={16} className="text-areia-400" />
+          <p className="label mb-2">
+            {envolveDoacao ? 'Livro(s) que você quer' : 'Livro que você quer'}
+          </p>
+
+          <div className="space-y-2">
+            {livrosDesejadosObjetos.map(livro => (
+              <div key={livro.id} className="flex items-center gap-3 p-4 bg-areia-50 rounded-2xl border border-areia-200">
+                <div className="relative w-12 h-16 rounded-lg overflow-hidden shrink-0 bg-areia-200">
+                  {livro.imagem_url ? (
+                    <Image src={livro.imagem_url} alt={livro.titulo} fill className="object-cover" />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <BookOpen size={16} className="text-areia-400" />
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm text-gray-800 truncate">{livroDesejado.titulo}</p>
-              <p className="text-xs text-gray-500">{livroDesejado.autor}</p>
-              <p className="text-verde-600 font-bold text-sm mt-1">{formatarMoeda(livroDesejado.preco)}</p>
-            </div>
-            <span className={cn('badge-estado', corEstado(livroDesejado.estado))}>
-              {labelEstado(livroDesejado.estado)}
-            </span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm text-gray-800 truncate">{livro.titulo}</p>
+                  <p className="text-xs text-gray-500">{livro.autor}</p>
+                  {livro.destino === 'DOACAO' ? (
+                    <p className="text-verde-600 font-bold text-sm mt-1">Doação — nota {livro.nota_estado}</p>
+                  ) : (
+                    <p className="text-verde-600 font-bold text-sm mt-1">{formatarMoeda(livro.preco)}</p>
+                  )}
+                </div>
+                <span className={cn('badge-estado', corEstado(livro.estado))}>
+                  {labelEstado(livro.estado)}
+                </span>
+                {livro.id !== livroInicial.id && (
+                  <button onClick={() => toggleDesejado(livro.id)} className="text-gray-400 hover:text-red-500 text-xs shrink-0">
+                    Remover
+                  </button>
+                )}
+              </div>
+            ))}
           </div>
+
+          {/* Outros livros de doação do mesmo vendedor — só aparece
+              quando o livro que trouxe a pessoa aqui é doação */}
+          {outrasDoacoesDisponiveis.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs text-gray-400 mb-2">
+                Este vendedor tem outros livros de doação — pode pedir mais de um na mesma proposta:
+              </p>
+              <div className="space-y-1.5">
+                {outrasDoacoesDisponiveis
+                  .filter(l => !livrosDesejadosSelecionados.includes(l.id))
+                  .map(livro => (
+                    <button
+                      key={livro.id}
+                      onClick={() => toggleDesejado(livro.id)}
+                      className="w-full flex items-center gap-2.5 p-2.5 bg-white border border-dashed border-areia-300 rounded-xl hover:border-verde-400 transition-colors text-left"
+                    >
+                      <Plus size={14} className="text-verde-500 shrink-0" />
+                      <span className="text-sm text-gray-700 truncate flex-1">{livro.titulo}</span>
+                      <span className="text-xs text-gray-400 shrink-0">nota {livro.nota_estado}</span>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -207,7 +294,9 @@ export default function TrocarPage() {
                     <p className="font-medium text-sm text-gray-800 truncate">{livro.titulo}</p>
                     <p className="text-xs text-gray-500 truncate">{livro.autor}</p>
                   </div>
-                  <p className="text-verde-600 font-bold text-sm shrink-0">{formatarMoeda(livro.preco)}</p>
+                  <p className="text-verde-600 font-bold text-sm shrink-0">
+                    {envolveDoacao ? `nota ${livro.nota_estado}` : formatarMoeda(livro.preco)}
+                  </p>
                 </div>
               )
             })}
@@ -215,23 +304,41 @@ export default function TrocarPage() {
         )}
       </div>
 
-      {/* Resumo de valores */}
+      {/* Resumo de valores — nota se envolve doação, R$ caso contrário */}
       {selecionados.length > 0 && (
         <div className="bg-areia-50 border border-areia-200 rounded-2xl p-4 mb-4 space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-500">Você oferece</span>
-            <span className="font-semibold">{formatarMoeda(valorSolicitante)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-500">Você recebe</span>
-            <span className="font-semibold">{formatarMoeda(valorReceptor)}</span>
-          </div>
-          <div className="border-t border-areia-200 pt-2 flex justify-between">
-            <span className="font-medium text-gray-700">Diferença</span>
-            <span className={cn('font-bold', diferenca >= 0 ? 'text-verde-600' : 'text-orange-500')}>
-              {diferenca > 0 ? '+' : ''}{formatarMoeda(diferenca)}
-            </span>
-          </div>
+          {envolveDoacao ? (
+            <>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Você oferece (nota total)</span>
+                <span className="font-semibold">{notaSolicitante}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Você recebe (nota total)</span>
+                <span className="font-semibold">{notaReceptor}</span>
+              </div>
+              <p className="text-xs text-gray-400 pt-1">
+                Troca por doação é comparada por nota de classificação, não em R$ — o vendedor decide se aceita.
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Você oferece</span>
+                <span className="font-semibold">{formatarMoeda(valorSolicitante)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Você recebe</span>
+                <span className="font-semibold">{formatarMoeda(valorReceptor)}</span>
+              </div>
+              <div className="border-t border-areia-200 pt-2 flex justify-between">
+                <span className="font-medium text-gray-700">Diferença</span>
+                <span className={cn('font-bold', diferenca >= 0 ? 'text-verde-600' : 'text-orange-500')}>
+                  {diferenca > 0 ? '+' : ''}{formatarMoeda(diferenca)}
+                </span>
+              </div>
+            </>
+          )}
         </div>
       )}
 

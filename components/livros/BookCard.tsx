@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import Image from 'next/image'
-import { ArrowLeftRight, BookOpen, Tag } from 'lucide-react'
+import { ArrowLeftRight, BookOpen, Tag, Gift } from 'lucide-react'
 import { cn, formatarMoeda } from '@/lib/utils'
 import { corEstado, labelEstado } from '@/lib/preco/calcular'
 import BotaoFavorito from './BotaoFavorito'
@@ -39,8 +39,19 @@ export default function BookCard({ livro, userId = null, favoritado = false, cla
           bookId={livro.id}
           favoritadoInicial={favoritado}
           userId={userId}
-          className="absolute top-2 left-2 w-8 h-8 bg-white/90 backdrop-blur-sm shadow-sm"
+          className="absolute top-1.5 left-1.5 w-7 h-7 bg-white/90 backdrop-blur-sm shadow-sm"
         />
+
+        {/* Badge de doação — livro de doação nunca tem desconto
+            (preco=0), então ocupa o mesmo canto que o badge de
+            desconto ocuparia, sem conflito */}
+        {livro.destino === 'DOACAO' && (
+          <div className="absolute top-1.5 right-1.5 bg-verde-500 text-white
+                          text-[10px] font-semibold px-1.5 py-1 rounded-md flex items-center gap-1">
+            <Gift size={9} />
+            Doação
+          </div>
+        )}
 
         {/* Badge de desconto */}
         {temDesconto && (
@@ -51,13 +62,13 @@ export default function BookCard({ livro, userId = null, favoritado = false, cla
           </div>
         )}
 
-        {/* Badge de troca — desce se já tiver badge de desconto */}
+        {/* Badge de troca — desce se já tiver badge de desconto ou de doação */}
         {livro.aceita_troca && (
           <div className={cn(
-            'absolute right-2 bg-verde-500 text-white text-xs font-semibold px-2 py-1 rounded-lg flex items-center gap-1',
-            temDesconto ? 'top-10' : 'top-2'
+            'absolute right-1.5 bg-verde-500 text-white text-[10px] font-semibold px-1.5 py-1 rounded-md flex items-center gap-1',
+            (temDesconto || livro.destino === 'DOACAO') ? 'top-8' : 'top-1.5'
           )}>
-            <ArrowLeftRight size={10} />
+            <ArrowLeftRight size={9} />
             Troca
           </div>
         )}
@@ -73,26 +84,29 @@ export default function BookCard({ livro, userId = null, favoritado = false, cla
       </div>
 
       {/* Info */}
-      <div className="p-3.5">
+      <div className="p-2.5">
         {/* Estado */}
-        <span className={cn('badge-estado mb-2', corEstado(livro.estado))}>
+        <span className={cn('badge-estado mb-1.5 text-[10px]', corEstado(livro.estado))}>
           {labelEstado(livro.estado)}
         </span>
 
         {/* Título e autor */}
-        <h3 className="font-semibold text-sm text-grafite line-clamp-2 leading-tight">
+        <h3 className="font-semibold text-xs text-grafite line-clamp-2 leading-tight">
           {livro.titulo}
         </h3>
-        <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">{livro.autor}</p>
+        <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">{livro.autor}</p>
 
-        {/* Preço */}
-        {temDesconto ? (
-          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-            <p className="text-gray-400 text-xs line-through">{formatarMoeda(livro.preco)}</p>
-            <p className="text-verde-600 font-bold text-base">{formatarMoeda(livro.preco_final)}</p>
+        {/* Preço — ou badge de doação, se o livro virou doação depois
+            de favoritado (nota editada pelo vendedor pra baixo) */}
+        {livro.destino === 'DOACAO' ? (
+          <p className="text-verde-600 font-bold text-xs mt-1.5">Doação — sem custo</p>
+        ) : temDesconto ? (
+          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+            <p className="text-gray-400 text-[10px] line-through">{formatarMoeda(livro.preco)}</p>
+            <p className="text-verde-600 font-bold text-sm">{formatarMoeda(livro.preco_final)}</p>
           </div>
         ) : (
-          <p className="text-verde-600 font-bold text-base mt-2">
+          <p className="text-verde-600 font-bold text-sm mt-1.5">
             {formatarMoeda(livro.preco)}
           </p>
         )}
