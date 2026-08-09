@@ -12,7 +12,12 @@ delete process.env.GOOGLE_API_KEY
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! })
 
-const MODELO_GEMINI = 'gemini-2.5-flash'
+// ATENÇÃO: gemini-2.5-flash-lite também está agendado pro Google
+// desligar em 16/10/2026 (mesma data do 2.5-flash que usávamos antes).
+// Antes dessa data, trocar de novo — sucessor provável é da geração
+// 3.x (ex: gemini-3.1-flash-lite), mas confirme o nome exato em
+// ai.google.dev/pricing na hora, porque a nomenclatura muda seguido.
+const MODELO_GEMINI = 'gemini-2.5-flash-lite'
 
 export interface PreenchimentoAutomaticoLivro {
   titulo: string

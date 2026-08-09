@@ -2,10 +2,19 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShoppingCart, ArrowLeftRight, Loader2, Minus, Plus, Gift, CheckCircle2, MessageCircle } from 'lucide-react'
+import { ShoppingCart, ArrowLeftRight, Loader2, Minus, Plus, MessageCircle } from 'lucide-react'
 import Link from 'next/link'
 import CheckoutModal from './CheckoutModal'
+import BotaoPedirDoacao from '@/components/doacoes/BotaoPedirDoacao'
 import type { DestinoLivro } from '@/types/database.types'
+
+interface DadosCheckout {
+  preferenceId: string
+  orderId: string
+  valorTotal: number
+  publicKey: string
+  payerEmail: string
+}
 
 interface BotoesAcaoProps {
   livroId: string
@@ -16,55 +25,18 @@ interface BotoesAcaoProps {
   destino: DestinoLivro
 }
 
-interface DadosCheckout {
-  order_id: string
-  preference_id: string
-  valor_total: number
-  public_key: string
-  payer_email: string
-}
-
 export default function BotoesAcao({ livroId, aceitaTroca, userId, vendedorId, quantidadeDisponivel, destino }: BotoesAcaoProps) {
   const router = useRouter()
   const [comprando, setComprando] = useState(false)
   const [quantidade, setQuantidade] = useState(1)
   const [dadosCheckout, setDadosCheckout] = useState<DadosCheckout | null>(null)
-  const [solicitandoDoacao, setSolicitandoDoacao] = useState(false)
-  const [doacaoSolicitada, setDoacaoSolicitada] = useState(false)
-  const [erroDoacao, setErroDoacao] = useState('')
-
-  const handleSolicitarDoacao = async () => {
-    if (!userId) {
-      router.push(`/login?redirect=/livro/${livroId}`)
-      return
-    }
-    setSolicitandoDoacao(true)
-    setErroDoacao('')
-    try {
-      const res = await fetch('/api/doacoes/solicitar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ book_id: livroId }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        setErroDoacao(data.error || 'Erro ao solicitar')
-        return
-      }
-      setDoacaoSolicitada(true)
-    } catch {
-      setErroDoacao('Erro de conexão. Tente novamente.')
-    } finally {
-      setSolicitandoDoacao(false)
-    }
-  }
+  const [iniciandoConversa, setIniciandoConversa] = useState(false)
 
   const handleComprar = async () => {
     if (!userId) {
       router.push(`/login?redirect=/livro/${livroId}`)
       return
     }
-
     setComprando(true)
     try {
       const res = await fetch('/api/pagamento', {
@@ -72,26 +44,22 @@ export default function BotoesAcao({ livroId, aceitaTroca, userId, vendedorId, q
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ livro_ids: [livroId], quantidade }),
       })
-
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-
-      // Em vez de redirecionar, abre o checkout embutido no próprio site
-      setDadosCheckout(data)
-    } catch {
-      alert('Erro ao processar compra. Tente novamente.')
+      if (!res.ok) {
+        console.error(data.error)
+        return
+      }
+      setDadosCheckout({
+        preferenceId: data.preference_id,
+        orderId: data.order_id,
+        valorTotal: data.valor_total,
+        publicKey: data.public_key,
+        payerEmail: data.payer_email,
+      })
     } finally {
       setComprando(false)
     }
   }
-
-  const handleSucessoPagamento = () => {
-    setDadosCheckout(null)
-    router.push('/painel/vendas?status=sucesso')
-    router.refresh()
-  }
-
-  const [iniciandoConversa, setIniciandoConversa] = useState(false)
 
   const handleEntrarEmContato = async () => {
     if (!userId) {
@@ -120,32 +88,14 @@ export default function BotoesAcao({ livroId, aceitaTroca, userId, vendedorId, q
     <>
       <div className="space-y-3">
         {destino === 'DOACAO' ? (
-          <>
-            {doacaoSolicitada ? (
-              <div className="flex items-center justify-center gap-2 text-sm text-verde-700 bg-verde-50 border border-verde-200 rounded-xl py-3">
-                <CheckCircle2 size={16} />
-                Solicitação enviada — aguarde o doador
-              </div>
-            ) : (
-              <button
-                onClick={handleSolicitarDoacao}
-                disabled={solicitandoDoacao}
-                className="btn-primary w-full text-base py-3"
-              >
-                {solicitandoDoacao ? (
-                  <Loader2 size={18} className="animate-spin" />
-                ) : (
-                  <Gift size={18} />
-                )}
-                {solicitandoDoacao ? 'Enviando...' : 'Pedir de graça'}
-              </button>
-            )}
-            {erroDoacao && <p className="text-xs text-red-500 text-center">{erroDoacao}</p>}
-          </>
+          <BotaoPedirDoacao
+            bookId={livroId}
+            userId={userId}
+            isProprioLivro={false}
+            jaSolicitado={false}
+          />
         ) : (
           <>
-            {/* Seletor de quantidade — só aparece se houver mais de 1
-                cópia disponível desse anúncio */}
             {quantidadeDisponivel > 1 && (
               <div className="flex items-center justify-between bg-areia-50 border border-areia-200 rounded-xl p-3">
                 <span className="text-sm text-gray-600">Quantidade</span>
@@ -213,16 +163,18 @@ export default function BotoesAcao({ livroId, aceitaTroca, userId, vendedorId, q
         </p>
       </div>
 
-      {/* Checkout embutido — abre direto no site, sem redirecionar */}
       {dadosCheckout && (
         <CheckoutModal
-          orderId={dadosCheckout.order_id}
-          preferenceId={dadosCheckout.preference_id}
-          valorTotal={dadosCheckout.valor_total}
-          publicKey={dadosCheckout.public_key}
-          payerEmail={dadosCheckout.payer_email}
+          preferenceId={dadosCheckout.preferenceId}
+          orderId={dadosCheckout.orderId}
+          valorTotal={dadosCheckout.valorTotal}
+          publicKey={dadosCheckout.publicKey}
+          payerEmail={dadosCheckout.payerEmail}
           onClose={() => setDadosCheckout(null)}
-          onSucesso={handleSucessoPagamento}
+          onSucesso={() => {
+            setDadosCheckout(null)
+            router.push('/painel/vendas')
+          }}
         />
       )}
     </>

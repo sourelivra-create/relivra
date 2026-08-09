@@ -40,7 +40,6 @@ export default function Header() {
       .from('books')
       .select('categoria:categorias(id, nome)')
       .eq('vendido', false)
-      .eq('destino', 'VENDA')
       .then(({ data }) => {
         const vistos = new Map<string, CategoriaResumo>()
         for (const item of data || []) {
@@ -80,14 +79,14 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-50 bg-white border-b border-areia-200 shadow-sm">
       <div className="max-w-6xl mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between gap-6 h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center group">
+          <Link href="/" className="flex items-center group shrink-0">
             <Logo iconSize={18} textSize={26} />
           </Link>
 
           {/* Nav desktop */}
-          <nav className="hidden md:flex items-center gap-1">
+          <nav className="hidden md:flex items-center gap-1 flex-1 justify-center">
             {/* Dropdown de Categorias */}
             <div className="relative" ref={dropdownRef}>
               <button

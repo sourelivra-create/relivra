@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
-import { BookOpen, ArrowLeftRight, ShoppingBag, Wallet, Heart, ShieldCheck, Settings, MessageCircle } from 'lucide-react'
+import { BookOpen, ArrowLeftRight, ShoppingBag, Wallet, Heart, ShieldCheck, Settings, MessageCircle, Gift } from 'lucide-react'
 
 const tabs = [
   { href: '/painel',              label: 'Resumo',       icon: Wallet },
@@ -28,9 +28,7 @@ export default async function PainelLayout({
 
   const profile = data as { nome: string; saldo: number; rating: number; is_admin: boolean } | null
 
-  // Contagem de mensagens não lidas — duas queries simples (conversas
-  // do usuário, depois mensagens não lidas nelas) em vez de um join
-  // complexo, já que o volume aqui é sempre pequeno por usuário
+  // Mensagens não lidas
   let mensagensNaoLidas = 0
   const { data: minhasConversas } = await supabase
     .from('conversas')
@@ -46,6 +44,24 @@ export default async function PainelLayout({
       .neq('remetente_id', user.id)
       .is('lida_em', null)
     mensagensNaoLidas = count || 0
+  }
+
+  // Pedidos de doação recebidos aguardando resposta — é a contagem
+  // que fecha o "como o vendedor vai saber que alguém quer o livro"
+  const { data: meusLivrosIds } = await supabase
+    .from('books')
+    .select('id')
+    .eq('vendedor_id', user.id)
+
+  let doacoesPendentes = 0
+  const idsLivros = (meusLivrosIds || []).map(l => l.id)
+  if (idsLivros.length > 0) {
+    const { count } = await supabase
+      .from('solicitacoes_doacao')
+      .select('id', { count: 'exact', head: true })
+      .in('book_id', idsLivros)
+      .eq('status', 'PENDENTE')
+    doacoesPendentes = count || 0
   }
 
   return (
@@ -75,8 +91,9 @@ export default async function PainelLayout({
         </Link>
       </div>
 
-      {/* Tabs de navegação */}
-      <nav className="flex overflow-x-auto gap-1 mb-6 pb-1">
+      {/* Tabs de navegação — pt-2 dá espaço pro badge não ser cortado
+          pelo overflow-x-auto (que também clipa o eixo vertical) */}
+      <nav className="flex overflow-x-auto gap-1 mb-6 pb-1 pt-2">
         {tabs.map(tab => (
           <Link
             key={tab.href}
@@ -91,6 +108,22 @@ export default async function PainelLayout({
         ))}
 
         <Link
+          href="/painel/doacoes"
+          className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm
+                     text-grafite-light hover:text-grafite hover:bg-areia-100
+                     transition-colors whitespace-nowrap"
+        >
+          <Gift size={16} />
+          Doações
+          {doacoesPendentes > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold
+                             w-4 h-4 rounded-full flex items-center justify-center">
+              {doacoesPendentes > 9 ? '9+' : doacoesPendentes}
+            </span>
+          )}
+        </Link>
+
+        <Link
           href="/painel/mensagens"
           className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm
                      text-grafite-light hover:text-grafite hover:bg-areia-100
@@ -99,7 +132,7 @@ export default async function PainelLayout({
           <MessageCircle size={16} />
           Mensagens
           {mensagensNaoLidas > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold
+            <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold
                              w-4 h-4 rounded-full flex items-center justify-center">
               {mensagensNaoLidas > 9 ? '9+' : mensagensNaoLidas}
             </span>

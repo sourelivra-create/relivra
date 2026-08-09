@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Mail, Lock, User, Loader2, AlertCircle, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import BotaoGoogle from '@/components/auth/BotaoGoogle'
 
 export default function CadastroPage() {
   const router = useRouter()
@@ -98,6 +99,14 @@ export default function CadastroPage() {
           {erro}
         </div>
       )}
+
+      <BotaoGoogle redirect="/painel" />
+
+      <div className="flex items-center gap-3 my-5">
+        <div className="flex-1 h-px bg-areia-200" />
+        <span className="text-xs text-gray-400">ou cadastre com email</span>
+        <div className="flex-1 h-px bg-areia-200" />
+      </div>
 
       <form onSubmit={handleCadastro} className="space-y-4">
         {/* Nome */}
